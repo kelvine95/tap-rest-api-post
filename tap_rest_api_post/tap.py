@@ -35,6 +35,7 @@ class TapRestApiPost(Tap):
                             th.Property("strategy", th.StringType, required=True),
                             th.Property("page_param", th.StringType),
                             th.Property("total_pages_path", th.StringType),
+                            th.Property("start_value", th.IntegerType, default=1),
                         ),
                     ),
                     th.Property(
@@ -48,7 +49,7 @@ class TapRestApiPost(Tap):
         ),
     ).to_dict()
 
-    def discover_streams(self) -> list[DynamicStream]:
+    def discover_streams(self):
         """Instantiate one DynamicStream per configured stream."""
         return [
             DynamicStream(tap=self, name=cfg["name"], config=cfg)
@@ -61,4 +62,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
