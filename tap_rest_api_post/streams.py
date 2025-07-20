@@ -1,5 +1,5 @@
 from tap_rest_api_post.client import PostRESTStream
-from tap_rest_api_post.authy import HeaderAPIKeyAuthenticator
+from tap_rest_api_post.auth import HeaderAPIKeyAuthenticator
 
 
 class DynamicStream(PostRESTStream):
