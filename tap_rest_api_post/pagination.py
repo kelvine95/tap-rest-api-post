@@ -15,9 +15,12 @@ class TotalPagesPaginator:
         self._next_page = start_value
         self._total_pages_path = total_pages_path
         self._total_pages: Optional[int] = None
+        self.finished: bool = False
 
     def next_page_token(self, response: requests.Response) -> Optional[int]:
-        """Return the next page number to request, or None if pagination is complete."""
+        """
+        Return the next page number to request, or None if pagination is complete.
+        """
         data = response.json()
 
         # On first call, extract and cache total pages
@@ -28,23 +31,25 @@ class TotalPagesPaginator:
             except Exception:
                 self._total_pages = 1
 
-        # If we still have pages to fetch, return the current, then increment
+        # If still within bounds, return next page
         if self._next_page <= self._total_pages:
             token = self._next_page
             self._next_page += 1
             return token
 
         # No more pages
+        self.finished = True
         return None
 
 
 class NoPaginationPaginator:
     """A paginator for endpoints that do not support pagination (single request)."""
     def __init__(self):
-        self._fired = False
+        self.finished: bool = False
 
     def next_page_token(self, response: requests.Response) -> Optional[int]:
-        if not self._fired:
-            self._fired = True
-            return None  # triggers exactly one request
+        # Allow exactly one request, then mark finished
+        if not self.finished:
+            self.finished = True
+            return None
         return None
