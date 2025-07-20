@@ -2,7 +2,6 @@ import copy
 import json
 from datetime import datetime, timezone
 from singer_sdk.streams import RESTStream
-from singer_sdk.helpers._typing import resolve
 
 class PostRESTStream(RESTStream):
     @property
@@ -32,6 +31,25 @@ class PostRESTStream(RESTStream):
 
     def prepare_request_payload(self, context, next_page_token) -> dict:
         payload = copy.deepcopy(self.stream_config.get("body", {}))
-        context = self.get_context(context, next_page_token)
-        return resolve(payload, context)
+        state = self.get_context_state()
+        bookmarks = state.get('bookmarks', {}) if state else {}
+        stream_bookmark = bookmarks.get(self.name, {})
+        last_record = stream_bookmark.get(self.replication_key, self.config.get("start_date"))
+        
+        subs = {
+            "start_date": last_record,
+            "current_date": datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        }
+        return self._apply_subs(payload, subs)
+    
+    def _apply_subs(self, obj, subs):
+        if isinstance(obj, dict):
+            return {k: self._apply_subs(v, subs) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [self._apply_subs(elem, subs) for elem in obj]
+        if isinstance(obj, str):
+            for key, value in subs.items():
+                obj = obj.replace(f"${{{key}}}", str(value))
+            return obj
+        return obj
     
