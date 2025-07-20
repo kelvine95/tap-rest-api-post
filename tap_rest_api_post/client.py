@@ -2,6 +2,7 @@ import copy
 import json
 from datetime import datetime, timezone
 from singer_sdk.streams import RESTStream
+from .pagination import TotalPagesPaginator  # Add this import
 
 class PostRESTStream(RESTStream):
     @property
