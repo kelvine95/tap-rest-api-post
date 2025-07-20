@@ -4,6 +4,7 @@ import copy
 from datetime import datetime, timezone
 
 from singer_sdk.streams import RESTStream
+from singer_sdk.pagination import PageNumberPaginator
 from tap_rest_api_post.pagination import TotalPagesPaginator
 
 
@@ -45,7 +46,12 @@ class PostRESTStream(RESTStream):
             return None
 
         strategy = pagination_config.get("strategy")
+        if strategy == "page_number":
+            # Use the standard SDK paginator for simple page number iteration.
+            return PageNumberPaginator(start_value=1)
+
         if strategy == "total_pages":
+            # Use our custom paginator for APIs that provide a total page count.
             total_pages_path = pagination_config.get("total_pages_path")
             if not total_pages_path:
                 raise ValueError(
@@ -62,7 +68,8 @@ class PostRESTStream(RESTStream):
         params = self.stream_config.get("params", {}).copy()
         pagination_config = self.stream_config.get("pagination")
         if next_page_token and pagination_config:
-            params[pagination_config["page_param"]] = next_page_token
+            page_param = pagination_config.get("page_param", "page")
+            params[page_param] = next_page_token
         return params
 
     def prepare_request_payload(
