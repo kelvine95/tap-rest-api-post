@@ -1,7 +1,7 @@
 """Contains the generic client for making POST requests."""
 
 from singer_sdk.streams import RESTStream
-from singer_sdk.pagination import PageNumberPaginator
+from singer_sdk.pagination.page_number import PageNumberPaginator
 
 
 class PostRESTStream(RESTStream):
