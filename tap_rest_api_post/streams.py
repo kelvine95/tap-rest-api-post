@@ -4,9 +4,10 @@ from singer_sdk.helpers.jsonpath import extract_jsonpath
 
 class DynamicStream(PostRESTStream):
     def __init__(self, tap, name: str, config: dict):
+        # Set schema before calling super() to ensure it's available
+        self._schema = config["schema"]
         super().__init__(tap=tap, name=name)
         self.stream_config = config
-        self._schema = config["schema"]
         
     @property
     def url_base(self) -> str:
