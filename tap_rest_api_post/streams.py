@@ -3,8 +3,6 @@ from tap_rest_api_post.auth import HeaderAPIKeyAuthenticator
 from singer_sdk.helpers.jsonpath import extract_jsonpath
 
 class DynamicStream(PostRESTStream):
-    """Stream whose behavior is driven by config."""
-
     def __init__(self, tap, name: str, config: dict):
         super().__init__(tap=tap, name=name)
         self.stream_config = config
@@ -33,10 +31,10 @@ class DynamicStream(PostRESTStream):
         )
     
     @property
-    def primary_keys(self) -> list[str] | None:
-        return self.stream_config.get("primary_keys")
+    def primary_keys(self) -> list[str]:
+        return self.stream_config.get("primary_keys", [])
     
     @property
-    def replication_key(self) -> str | None:
-        return self.stream_config.get("replication_key")
+    def replication_key(self) -> str:
+        return self.stream_config.get("replication_key", "")
     
