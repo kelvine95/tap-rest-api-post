@@ -1,5 +1,4 @@
-"""The main entry point and stream discovery for the tap."""
-
+import sys
 from singer_sdk import Tap
 from singer_sdk import typing as th
 
@@ -13,8 +12,8 @@ class TapRestApiPost(Tap):
     config_jsonschema = th.PropertiesList(
         th.Property(
             "start_date",
-            th.DateTimeType,
-            description="The default start date for streams that support replication.",
+            th.StringType,
+            description="Default replication start date in YYYY-MM-DD format",
         ),
         th.Property(
             "streams",
@@ -33,22 +32,9 @@ class TapRestApiPost(Tap):
                     th.Property(
                         "pagination",
                         th.ObjectType(
-                            th.Property(
-                                "strategy",
-                                th.StringType,
-                                required=True,
-                                description="e.g., 'page_number' or 'total_pages'.",
-                            ),
-                            th.Property(
-                                "page_param",
-                                th.StringType,
-                                description="The name of the page number parameter (e.g., 'page').",
-                            ),
-                            th.Property(
-                                "total_pages_path",
-                                th.StringType,
-                                description="JSONPath to the 'totalPages' field in the response.",
-                            ),
+                            th.Property("strategy", th.StringType, required=True),
+                            th.Property("page_param", th.StringType),
+                            th.Property("total_pages_path", th.StringType),
                         ),
                     ),
                     th.Property(
@@ -63,8 +49,16 @@ class TapRestApiPost(Tap):
     ).to_dict()
 
     def discover_streams(self) -> list[DynamicStream]:
-        """Discover and return the list of streams based on the configuration."""
+        """Instantiate one DynamicStream per configured stream."""
         return [
-            DynamicStream(tap=self, name=stream_config["name"], config=stream_config)
-            for stream_config in self.config.get("streams", [])
+            DynamicStream(tap=self, name=cfg["name"], config=cfg)
+            for cfg in self.config.get("streams", [])
         ]
+
+
+def main():
+    TapRestApiPost.cli()
+
+
+if __name__ == "__main__":
+    main()
