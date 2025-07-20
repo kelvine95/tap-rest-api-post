@@ -9,11 +9,12 @@ class TotalPagesPaginator:
     def next_page_token(self, response):
         if self.total_pages is None:
             # Extract total pages from first response
-            self.total_pages = extract_jsonpath(self.total_pages_path, response.json())[0]
+            results = extract_jsonpath(self.total_pages_path, response.json())
+            self.total_pages = results[0] if results else 0
         
         if self.next_page <= self.total_pages:
             page = self.next_page
             self.next_page += 1
             return page
         return None
-        
+    

@@ -6,6 +6,7 @@ class DynamicStream(PostRESTStream):
     def __init__(self, tap, name: str, config: dict):
         super().__init__(tap=tap, name=name)
         self.stream_config = config
+        self._schema = config["schema"]
         
     @property
     def url_base(self) -> str:
@@ -20,7 +21,12 @@ class DynamicStream(PostRESTStream):
         return self.stream_config.get("records_path", "$[*]")
     
     def parse_response(self, response):
-        return extract_jsonpath(self.records_jsonpath, input=response.json())
+        records = extract_jsonpath(self.records_jsonpath, input=response.json())
+        transform = self.stream_config.get("record_transform", {})
+        return [self._transform_record(r, transform) for r in records] if transform else records
+    
+    def _transform_record(self, record, transform):
+        return {**record, **transform}
     
     @property
     def authenticator(self):
@@ -37,4 +43,7 @@ class DynamicStream(PostRESTStream):
     @property
     def replication_key(self) -> str:
         return self.stream_config.get("replication_key", "")
+    
+    def get_json_schema(self) -> dict:
+        return self._schema
     
