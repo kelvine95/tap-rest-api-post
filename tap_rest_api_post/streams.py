@@ -65,4 +65,3 @@ class DynamicStream(PostRESTStream):
             key=self.stream_config.get("api_key_header", "x-api-key"),
             value=self.stream_config["api_key"]
         )
-    

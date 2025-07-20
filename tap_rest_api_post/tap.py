@@ -37,7 +37,7 @@ class TapRestApiPost(Tap):
                                 "strategy",
                                 th.StringType,
                                 required=True,
-                                description="'total_pages' for Luganodes-style pagination.",
+                                description="e.g., 'page_number' or 'total_pages'.",
                             ),
                             th.Property(
                                 "page_param",
