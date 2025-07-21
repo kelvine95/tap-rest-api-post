@@ -5,9 +5,9 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, Optional
 
 from singer_sdk.streams import RESTStream
-from singer_sdk.helpers.jsonpath import extract_jsonpath
 from tap_rest_api_post.auth import HeaderAPIKeyAuthenticator
 from tap_rest_api_post.pagination import TotalPagesPaginator
+from singer_sdk.helpers.jsonpath import extract_jsonpath
 
 class PostRESTStream(RESTStream):
     """A simple base class that forces the method to POST."""
@@ -32,7 +32,6 @@ class DynamicStream(PostRESTStream):
 
     @property
     def authenticator(self) -> HeaderAPIKeyAuthenticator:
-        """Return a new authenticator instance."""
         return HeaderAPIKeyAuthenticator(
             stream=self,
             key=self.stream_config.get("api_key_header"),
@@ -41,7 +40,6 @@ class DynamicStream(PostRESTStream):
 
     @property
     def records_jsonpath(self) -> str:
-        """Return a JSONPath expression for extracting records from the API response."""
         return self.stream_config["records_path"]
 
     @property
@@ -49,7 +47,6 @@ class DynamicStream(PostRESTStream):
         return self.stream_config.get("replication_key")
 
     def get_new_paginator(self):
-        """Create a new pagination helper instance."""
         pagination_config = self.stream_config.get("pagination")
         if not pagination_config or pagination_config.get("strategy") != "total_pages":
             return None
@@ -69,7 +66,6 @@ class DynamicStream(PostRESTStream):
         return params
 
     def prepare_request_payload(self, context: Optional[dict], next_page_token) -> Optional[dict]:
-        """Prepare the data payload for the POST request."""
         self.logger.info("Preparing request payload (body)...")
         payload = copy.deepcopy(self.stream_config.get("body", {}))
         
@@ -86,13 +82,11 @@ class DynamicStream(PostRESTStream):
             "current_date": datetime.now(timezone.utc).strftime("%Y-%m-%d")
         }
         
-        self.logger.debug(f"Substituting placeholders with: {subs}")
         final_payload = self._apply_subs(payload, subs)
         self.logger.info(f"Final request body: {final_payload}")
         return final_payload
 
     def _apply_subs(self, obj, subs):
-        """Recursively substitutes placeholder values in the payload."""
         if isinstance(obj, dict):
             return {k: self._apply_subs(v, subs) for k, v in obj.items()}
         if isinstance(obj, list):
@@ -111,9 +105,6 @@ class DynamicStream(PostRESTStream):
         
         transform = self.stream_config.get("record_transform", {})
         if transform:
-            self.logger.info("Applying record transformation.")
             yield from ({**r, **transform} for r in records)
         else:
             yield from records
-
-            

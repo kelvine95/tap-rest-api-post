@@ -14,11 +14,10 @@ class HeaderAPIKeyAuthenticator(APIAuthenticatorBase):
     def get_auth_header(self) -> dict:
         """
         Returns authorization headers, including the API key and Content-Type.
-        This is the correct method to override.
+        This is the correct method to override in the base class.
         """
         self.logger.info(f"Setting auth header '{self._key}' and 'Content-Type'.")
         return {
             self._key: self._value,
             "Content-Type": "application/json",
         }
-    
