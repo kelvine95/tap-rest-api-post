@@ -8,7 +8,6 @@ from .pagination import TotalPagesPaginator
 class PostRESTStream(RESTStream):
     """A custom REST stream for making POST requests."""
 
-    # CRITICAL FIX: Explicitly set the HTTP method to POST.
     @property
     def http_method(self) -> str:
         """Explicitly set the HTTP method to POST."""
@@ -64,9 +63,10 @@ class PostRESTStream(RESTStream):
         """Prepares the JSON body for the POST request."""
         payload = copy.deepcopy(self.stream_config.get("body", {}))
         
-        # CRITICAL FIX: Correctly get the start date from state or config.
-        bookmark = self.get_stream_or_partition_state(context)
-        last_synced_date = bookmark.get("replication_key_value")
+        # FINAL FIX: Reverted to the universally compatible method for getting state.
+        state = self.get_context_state(context)
+        stream_bookmark = state.get("bookmarks", {}).get(self.name, {})
+        last_synced_date = stream_bookmark.get(self.replication_key)
 
         if last_synced_date:
             start_date = last_synced_date
