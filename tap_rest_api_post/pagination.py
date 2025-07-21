@@ -1,5 +1,4 @@
 # pagination.py
-
 import logging
 from singer_sdk.helpers.jsonpath import extract_jsonpath
 from singer_sdk.pagination import BasePageNumberPaginator
@@ -11,14 +10,17 @@ class TotalPagesPaginator(BasePageNumberPaginator):
     Paginator that reads a `totalPages` field from the response JSON
     and increments the page number until it reaches the total, with extensive logging.
     """
+    
     def __init__(self, start_value: int = 1, total_pages_path: str = "data.pagination.totalPages"):
         super().__init__(start_value=start_value)
         self.total_pages_path = total_pages_path
         self._total_pages = None
         logger.info(f"TotalPagesPaginator(init) start_value={start_value}, total_pages_path='{total_pages_path}'")
 
-    def get_next_page_token(self, response):
+    def get_next(self, response):
+        """Get the next page token from the response."""
         logger.debug(f"[Paginator] current_value={self.current_value}")
+        
         if self._total_pages is None:
             logger.info("[Paginator] discovering total pages from response JSON")
             try:
@@ -34,11 +36,18 @@ class TotalPagesPaginator(BasePageNumberPaginator):
             self.current_value = next_page
             logger.debug(f"[Paginator] next_page_token -> {next_page}")
             return next_page
-
+        
         logger.debug("[Paginator] no more pages to fetch")
         return None
 
     def has_more(self, response) -> bool:
-        more = self.get_next_page_token(response) is not None
+        """Check if there are more pages available."""
+        # Check if we can get a next token without advancing the paginator
+        temp_current = self.current_value
+        next_token = self.get_next(response)
+        self.current_value = temp_current  # Restore current value
+        
+        more = next_token is not None
         logger.info(f"[Paginator] has_more? current_page={self.current_value} -> {more}")
         return more
+    

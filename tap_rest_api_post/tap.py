@@ -1,9 +1,9 @@
+# tap.py
 import logging
 import sys
+from typing import List
 
-# ───────────────────────────────────────────────────────────────────────────────
 # Root logger configuration: send all logs to stderr in a very verbose format
-# ───────────────────────────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.DEBUG,
     format="%(asctime)s %(levelname)s %(name)s:%(lineno)d %(message)s",
@@ -12,16 +12,15 @@ logging.basicConfig(
 
 from singer_sdk import Tap
 from singer_sdk import typing as th
-
 from tap_rest_api_post.streams import DynamicStream
 
 logger = logging.getLogger(__name__)
 
-
 class TapRestApiPost(Tap):
     """A generic Meltano tap for POST-based REST APIs, with exhaustive logging."""
+    
     name = "tap-rest-api-post"
-
+    
     config_jsonschema = th.PropertiesList(
         th.Property("start_date", th.DateTimeType),
         th.Property(
@@ -46,10 +45,11 @@ class TapRestApiPost(Tap):
         ),
     ).to_dict()
 
-    def discover_streams(self) -> list[DynamicStream]:
+    def discover_streams(self) -> List[DynamicStream]:
         """Instantiate dynamic streams based on configuration with verbose logging."""
         streams_cfg = self.config.get('streams', [])
         logger.debug(f"[Tap] discover_streams(): found {len(streams_cfg)} stream configs")
+        
         streams = []
         for cfg in streams_cfg:
             name = cfg.get('name')
@@ -57,18 +57,24 @@ class TapRestApiPost(Tap):
             stream = DynamicStream(tap=self, name=name, config=cfg)
             streams.append(stream)
             logger.info(f"[Tap] added stream: {name}")
+        
         logger.debug(f"[Tap] discover_streams(): returning {len(streams)} streams: {[s.name for s in streams]}")
         return streams
 
-    def main(self):
+    def run(self, *args, **kwargs):
+        """Override run method for better error handling."""
         logger.info("[Tap] Starting tap-rest-api-post...")
         try:
-            super().main()
+            super().run(*args, **kwargs)
         except Exception:
             logger.exception("[Tap] Unhandled exception in main loop")
             raise
         logger.info("[Tap] tap-rest-api-post finished successfully.")
 
-
 def main():
+    """Main entry point for the tap."""
     TapRestApiPost.cli()
+
+if __name__ == "__main__":
+    main()
+    
