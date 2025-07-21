@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, Optional
 
 from singer_sdk.streams import RESTStream
+from singer_sdk.helpers.jsonpath import extract_jsonpath
 from tap_rest_api_post.auth import HeaderAPIKeyAuthenticator
 from tap_rest_api_post.pagination import TotalPagesPaginator
 
@@ -19,9 +20,7 @@ class DynamicStream(PostRESTStream):
     
     def __init__(self, tap, name: str, config: dict):
         self.stream_config = config
-        # The schema is now passed directly to the parent class constructor
         super().__init__(tap=tap, name=name, schema=self.stream_config["schema"])
-        self.logger.info(f"Stream '{self.name}' initialized.")
 
     @property
     def url_base(self) -> str:
@@ -33,6 +32,7 @@ class DynamicStream(PostRESTStream):
 
     @property
     def authenticator(self) -> HeaderAPIKeyAuthenticator:
+        """Return a new authenticator instance."""
         return HeaderAPIKeyAuthenticator(
             stream=self,
             key=self.stream_config.get("api_key_header"),
@@ -41,6 +41,7 @@ class DynamicStream(PostRESTStream):
 
     @property
     def records_jsonpath(self) -> str:
+        """Return a JSONPath expression for extracting records from the API response."""
         return self.stream_config["records_path"]
 
     @property
@@ -48,6 +49,7 @@ class DynamicStream(PostRESTStream):
         return self.stream_config.get("replication_key")
 
     def get_new_paginator(self):
+        """Create a new pagination helper instance."""
         pagination_config = self.stream_config.get("pagination")
         if not pagination_config or pagination_config.get("strategy") != "total_pages":
             return None
@@ -67,6 +69,7 @@ class DynamicStream(PostRESTStream):
         return params
 
     def prepare_request_payload(self, context: Optional[dict], next_page_token) -> Optional[dict]:
+        """Prepare the data payload for the POST request."""
         self.logger.info("Preparing request payload (body)...")
         payload = copy.deepcopy(self.stream_config.get("body", {}))
         
@@ -89,6 +92,7 @@ class DynamicStream(PostRESTStream):
         return final_payload
 
     def _apply_subs(self, obj, subs):
+        """Recursively substitutes placeholder values in the payload."""
         if isinstance(obj, dict):
             return {k: self._apply_subs(v, subs) for k, v in obj.items()}
         if isinstance(obj, list):
@@ -99,4 +103,17 @@ class DynamicStream(PostRESTStream):
                     obj = obj.replace(f"${{{key}}}", str(value))
             return obj
         return obj
+
+    def parse_response(self, response: requests.Response) -> Iterable[dict]:
+        """Parse the response and extract the records."""
+        self.logger.info(f"Parsing response from {response.request.method} {response.url}")
+        records = extract_jsonpath(self.records_jsonpath, input=response.json())
         
+        transform = self.stream_config.get("record_transform", {})
+        if transform:
+            self.logger.info("Applying record transformation.")
+            yield from ({**r, **transform} for r in records)
+        else:
+            yield from records
+
+            
