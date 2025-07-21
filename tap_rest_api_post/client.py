@@ -1,3 +1,5 @@
+# tap-rest-api-post/client.py
+
 import copy
 import requests
 from datetime import datetime, timezone
@@ -6,13 +8,7 @@ from singer_sdk.streams import RESTStream
 from .pagination import TotalPagesPaginator
 
 class PostRESTStream(RESTStream):
-    """A custom REST stream for making POST requests."""
-
-    @property
-    def http_method(self) -> str:
-        """Explicitly set the HTTP method to POST."""
-        self.logger.debug(f"Setting HTTP method to 'POST' for stream '{self.name}'.")
-        return "POST"
+    """Base class for streams that use POST. The http_method is set in the child class."""
 
     def get_new_paginator(self):
         """Initializes the paginator for the stream."""
@@ -63,7 +59,6 @@ class PostRESTStream(RESTStream):
         """Prepares the JSON body for the POST request."""
         payload = copy.deepcopy(self.stream_config.get("body", {}))
         
-        # FINAL FIX: Reverted to the universally compatible method for getting state.
         state = self.get_context_state(context)
         stream_bookmark = state.get("bookmarks", {}).get(self.name, {})
         last_synced_date = stream_bookmark.get(self.replication_key)
@@ -97,4 +92,3 @@ class PostRESTStream(RESTStream):
                     obj = obj.replace(f"${{{key}}}", str(value))
             return obj
         return obj
-    

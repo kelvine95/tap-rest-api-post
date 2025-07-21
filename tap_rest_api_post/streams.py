@@ -1,3 +1,5 @@
+# tap-rest-api-post/streams.py
+
 from singer_sdk.helpers.jsonpath import extract_jsonpath
 from tap_rest_api_post.auth import HeaderAPIKeyAuthenticator
 from tap_rest_api_post.client import PostRESTStream
@@ -10,6 +12,12 @@ class DynamicStream(PostRESTStream):
         self.logger.info(f"Stream '{self.name}' initialized.")
         self.logger.debug(f"Stream '{self.name}' config: {self.stream_config}")
 
+    # --- CRITICAL FIX IS HERE ---
+    @property
+    def http_method(self) -> str:
+        """Explicitly set the HTTP method to POST for this specific stream."""
+        return "POST"
+
     @property
     def url_base(self) -> str:
         return self.stream_config["api_url"]
@@ -20,7 +28,6 @@ class DynamicStream(PostRESTStream):
 
     @property
     def records_jsonpath(self) -> str:
-        # Defaults to `data.rewards` as per your config
         return self.stream_config.get("records_path", "$[*]")
 
     @property
@@ -29,11 +36,7 @@ class DynamicStream(PostRESTStream):
         api_key = self.stream_config["api_key"]
         self.logger.info(f"Authenticator created for stream '{self.name}'.")
         self.logger.debug(f"Auth header: '{header}', API Key: '...{api_key[-4:]}'")
-        return HeaderAPIKeyAuthenticator(
-            stream=self,
-            key=header,
-            value=api_key
-        )
+        return HeaderAPIKeyAuthenticator(stream=self, key=header, value=api_key)
     
     def parse_response(self, response):
         self.logger.info(f"Parsing response for stream '{self.name}'.")
@@ -60,4 +63,3 @@ class DynamicStream(PostRESTStream):
 
     def get_json_schema(self) -> dict:
         return self._schema
-    
