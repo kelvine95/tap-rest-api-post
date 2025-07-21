@@ -5,6 +5,11 @@ class TotalPagesPaginator:
         self.next_page = start_value
         self.total_pages_path = total_pages_path
         self.total_pages = None
+        self._finished = False
+
+    @property
+    def finished(self):
+        return self._finished
 
     def next_page_token(self, response):
         if self.total_pages is None:
@@ -16,5 +21,7 @@ class TotalPagesPaginator:
             page = self.next_page
             self.next_page += 1
             return page
+        
+        self._finished = True
         return None
     
