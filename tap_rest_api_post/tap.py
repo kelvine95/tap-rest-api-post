@@ -1,12 +1,12 @@
-"""Tap for REST API POST."""
+import logging
 from singer_sdk import Tap
 from singer_sdk import typing as th
-
-# This now points to the single, all-in-one streams file
 from tap_rest_api_post.streams import DynamicStream
 
+logger = logging.getLogger(__name__)
+
 class TapRestApiPost(Tap):
-    """A generic Meltano tap for REST APIs requiring POST requests."""
+    """A generic Meltano tap for REST APIs requiring POST requests, built with detailed logging."""
     name = "tap-rest-api-post"
 
     config_jsonschema = th.PropertiesList(
@@ -34,9 +34,15 @@ class TapRestApiPost(Tap):
     ).to_dict()
 
     def discover_streams(self) -> list[DynamicStream]:
-        """Return a list of discovered streams."""
-        return [
-            DynamicStream(tap=self, name=stream_config["name"], config=stream_config)
+        logger.info(f"Discovering {len(self.config['streams'])} streams...")
+        streams = [
+            DynamicStream(tap=self, config=stream_config)
             for stream_config in self.config["streams"]
         ]
-    
+        logger.info(f"Discovered streams: {[s.name for s in streams]}")
+        return streams
+
+    def main(self):
+        logger.info("Starting tap execution...")
+        super().main()
+        logger.info("Tap execution completed.")
