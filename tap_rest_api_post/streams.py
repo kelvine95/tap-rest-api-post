@@ -120,19 +120,25 @@ class DynamicStream(PostRESTStream):
         raw = copy.deepcopy(self.stream_config.get("body", {}))
         logger.debug(f"[{self.name}] raw body template -> {raw!r}")
 
-        # Handle template variables in the body
-        if "start_date" in raw and raw["start_date"] == "${start_date}":
-            last_val = self.get_starting_replication_key_value(context)
-            start_val = last_val or self.tap.config.get("start_date")
-            if isinstance(start_val, (datetime, date)):
-                start_str = start_val.strftime("%Y-%m-%d")
-            else:
-                start_str = str(start_val or "")
-            raw["start_date"] = start_str
-
-        if "end_date" in raw and raw["end_date"] == "${current_date}":
-            end_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-            raw["end_date"] = end_str
+        # Process each field in the body for template variables
+        for key, value in raw.items():
+            if isinstance(value, str):
+                # Handle ${start_date} template
+                if value == "${start_date}" or "start_date" in value:
+                    last_val = self.get_starting_replication_key_value(context)
+                    start_val = last_val or self.tap.config.get("start_date")
+                    if isinstance(start_val, (datetime, date)):
+                        start_str = start_val.strftime("%Y-%m-%d")
+                    else:
+                        start_str = str(start_val or "2024-01-01")  # Default fallback
+                    raw[key] = start_str
+                    logger.debug(f"[{self.name}] Replaced {key} template with: {start_str}")
+                
+                # Handle ${current_date} template
+                elif value == "${current_date}" or "current_date" in value:
+                    end_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                    raw[key] = end_str
+                    logger.debug(f"[{self.name}] Replaced {key} template with: {end_str}")
 
         logger.info(f"[{self.name}] payload -> {raw}")
         return raw
