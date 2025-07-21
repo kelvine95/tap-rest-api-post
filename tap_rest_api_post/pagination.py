@@ -1,54 +1,42 @@
-# pagination.py
-import logging
-from singer_sdk.pagination import BasePageNumberPaginator
-from singer_sdk.helpers.jsonpath import extract_jsonpath
+# tap_rest_api_post/pagination.py
+"""Pagination class for tap-rest-api-post."""
 
-logger = logging.getLogger(__name__)
+from typing import Optional
+
+from singer_sdk.helpers.jsonpath import extract_jsonpath
+from singer_sdk.pagination import BasePageNumberPaginator
+
 
 class TotalPagesPaginator(BasePageNumberPaginator):
     """
-    Paginator that reads a `totalPages` field from the response JSON
-    and increments the page number until it reaches the total, with extensive logging.
+    Paginator that stops when the page number reaches a 'totalPages'
+    value found in the response body.
     """
-
-    def __init__(self, start_value: int = 1, total_pages_path: str = "data.pagination.totalPages"):
+    def __init__(self, start_value: int, total_pages_path: str):
+        """Initialize the paginator."""
         super().__init__(start_value=start_value)
         self.total_pages_path = total_pages_path
-        self._total_pages = None
-        logger.info(
-            f"TotalPagesPaginator(init) start_value={start_value}, total_pages_path='{total_pages_path}'"
-        )
-
-    def get_next(self, response):
-        """Get the next page token from the response."""
-        logger.debug(f"[Paginator] current_value={self.current_value}")
-        if self._total_pages is None:
-            logger.info("[Paginator] discovering total pages from response JSON")
-            try:
-                all_vals = list(
-                    extract_jsonpath(self.total_pages_path, response.json())
-                )
-                self._total_pages = int(all_vals[0]) if all_vals else self.start_value
-                logger.info(f"[Paginator] discovered total_pages={self._total_pages}")
-            except Exception as e:
-                logger.error(
-                    f"[Paginator] error parsing total pages: {e}. defaulting to {self.start_value}"
-                )
-                self._total_pages = self.start_value
-        next_page = self.current_value + 1
-        if next_page <= self._total_pages:
-            self.current_value = next_page
-            logger.debug(f"[Paginator] next_page_token -> {next_page}")
-            return next_page
-        logger.debug("[Paginator] no more pages to fetch")
-        return None
+        self._total_pages: Optional[int] = None
 
     def has_more(self, response) -> bool:
-        """Check if there are more pages available."""
-        temp_current = self.current_value
-        next_token = self.get_next(response)
-        self.current_value = temp_current
-        more = next_token is not None
-        logger.info(f"[Paginator] has_more? current_page={self.current_value} -> {more}")
-        return more
+        """Check if there are more pages to fetch."""
+        if self._total_pages is None:
+            # Discover the total number of pages from the first response
+            try:
+                all_vals = list(extract_jsonpath(self.total_pages_path, response.json()))
+                if all_vals:
+                    self._total_pages = int(all_vals[0])
+                else:
+                    # If total_pages_path is not found, assume only one page
+                    self.logger.warning(
+                        f"Could not find '{self.total_pages_path}' in response. "
+                        "Assuming only one page."
+                    )
+                    self._total_pages = 1
+            except (ValueError, IndexError) as e:
+                self.logger.error(f"Error parsing total pages: {e}. Defaulting to 1.")
+                self._total_pages = 1
+
+        # Compare current page number with the total
+        return self.current_value < self._total_pages
     

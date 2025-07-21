@@ -1,28 +1,30 @@
-# tap.py
-import logging
-import sys
+# tap_rest_api_post/tap.py
+"""TapRestApiPost tap class."""
+
 from typing import List
 
 from singer_sdk import Tap
 from singer_sdk import typing as th
+
 from tap_rest_api_post.streams import DynamicStream
 
-# Root logger configuration: verbose to stderr
-logging.basicConfig(
-    level=logging.DEBUG,
-    format="%(asctime)s %(levelname)s %(name)s:%(lineno)d %(message)s",
-    stream=sys.stderr,
-)
-
-logger = logging.getLogger(__name__)
 
 class TapRestApiPost(Tap):
-    """A generic Meltano tap for POST-based REST APIs, with exhaustive logging."""
+    """A generic Meltano tap for POST-based REST APIs."""
 
     name = "tap-rest-api-post"
 
     config_jsonschema = th.PropertiesList(
-        th.Property("start_date", th.StringType, description="Fallback start date (YYYY-MM-DD)"),
+        th.Property(
+            "start_date",
+            th.DateTimeType,
+            description="Global start date to be injected into stream request bodies.",
+        ),
+        th.Property(
+            "current_date",
+            th.DateTimeType,
+            description="Global end date to be injected into stream request bodies.",
+        ),
         th.Property(
             "streams",
             th.ArrayType(
@@ -32,10 +34,25 @@ class TapRestApiPost(Tap):
                     th.Property("path", th.StringType, required=True),
                     th.Property("api_key", th.StringType, required=True, secret=True),
                     th.Property("api_key_header", th.StringType, default="x-api-key"),
-                    th.Property("body", th.ObjectType(), required=True),
+                    th.Property("body", th.ObjectType(), default={}),
                     th.Property("records_path", th.StringType, required=True),
-                    th.Property("pagination", th.ObjectType()),
-                    th.Property("schema", th.ObjectType(additional_properties=True), required=True),
+                    th.Property("primary_keys", th.ArrayType(th.StringType), default=[]),
+                    th.Property("replication_key", th.StringType),
+                    th.Property(
+                        "pagination",
+                        th.ObjectType(
+                            th.Property("strategy", th.StringType, required=True),
+                            th.Property("page_param", th.StringType),
+                            th.Property("page_size_param", th.StringType),
+                            th.Property("page_size", th.IntegerType),
+                            th.Property("total_pages_path", th.StringType),
+                        ),
+                    ),
+                    th.Property(
+                        "schema",
+                        th.ObjectType(additional_properties=True),
+                        required=True,
+                    ),
                 )
             ),
             required=True,
@@ -43,23 +60,11 @@ class TapRestApiPost(Tap):
     ).to_dict()
 
     def discover_streams(self) -> List[DynamicStream]:
-        streams_cfg = self.config.get('streams', [])
-        logger.debug(f"[Tap] discover_streams(): {len(streams_cfg)} streams configured")
-        return [DynamicStream(self, cfg.get('name'), cfg) for cfg in streams_cfg]
+        """Return a list of discovered streams."""
+        return [
+            DynamicStream(tap=self, name=stream_config["name"], config=stream_config)
+            for stream_config in self.config["streams"]
+        ]
 
-    def run(self, *args, **kwargs):
-        logger.info("[Tap] Starting tap-rest-api-post...")
-        try:
-            super().run(*args, **kwargs)
-        except Exception:
-            logger.exception("[Tap] Unhandled exception in main loop")
-            raise
-        logger.info("[Tap] tap-rest-api-post finished successfully.")
-
-
-def main():
-    TapRestApiPost.cli()
-
-
-if __name__ == '__main__':
-    main()
+# CLI Execution
+cli = TapRestApiPost.cli
