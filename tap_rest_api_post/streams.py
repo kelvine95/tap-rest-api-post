@@ -1,16 +1,17 @@
 # tap_rest_api_post/streams.py
 
 import copy
+import requests  # <-- THE MISSING IMPORT IS NOW ADDED
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, Optional
 
 from singer_sdk.streams import RESTStream
+from singer_sdk.helpers.jsonpath import extract_jsonpath
 from tap_rest_api_post.auth import HeaderAPIKeyAuthenticator
 from tap_rest_api_post.pagination import TotalPagesPaginator
-from singer_sdk.helpers.jsonpath import extract_jsonpath
 
 class PostRESTStream(RESTStream):
-    """A simple base class that forces the method to POST."""
+    """Base class that forces the method to POST."""
     @property
     def http_method(self) -> str:
         return "POST"
@@ -62,29 +63,18 @@ class DynamicStream(PostRESTStream):
         params[pagination_config["page_param"]] = next_page_token
         params[pagination_config["page_size_param"]] = pagination_config["page_size"]
         
-        self.logger.info(f"Preparing URL params: {params}")
         return params
 
     def prepare_request_payload(self, context: Optional[dict], next_page_token) -> Optional[dict]:
-        self.logger.info("Preparing request payload (body)...")
         payload = copy.deepcopy(self.stream_config.get("body", {}))
-        
-        start_date = self.get_starting_replication_key_value(context)
-
-        if start_date:
-            self.logger.info(f"Found state bookmark for '{self.replication_key}': '{start_date}'. Using as start_date.")
-        else:
-            start_date = self.config.get("start_date")
-            self.logger.info(f"No state found. Using config start_date: '{start_date}'.")
+        start_date = self.get_starting_replication_key_value(context) or self.config.get("start_date")
 
         subs = {
             "start_date": start_date,
             "current_date": datetime.now(timezone.utc).strftime("%Y-%m-%d")
         }
         
-        final_payload = self._apply_subs(payload, subs)
-        self.logger.info(f"Final request body: {final_payload}")
-        return final_payload
+        return self._apply_subs(payload, subs)
 
     def _apply_subs(self, obj, subs):
         if isinstance(obj, dict):
@@ -100,7 +90,6 @@ class DynamicStream(PostRESTStream):
 
     def parse_response(self, response: requests.Response) -> Iterable[dict]:
         """Parse the response and extract the records."""
-        self.logger.info(f"Parsing response from {response.request.method} {response.url}")
         records = extract_jsonpath(self.records_jsonpath, input=response.json())
         
         transform = self.stream_config.get("record_transform", {})
@@ -108,3 +97,4 @@ class DynamicStream(PostRESTStream):
             yield from ({**r, **transform} for r in records)
         else:
             yield from records
+    
