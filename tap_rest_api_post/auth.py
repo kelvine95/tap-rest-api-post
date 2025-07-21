@@ -7,6 +7,7 @@ class HeaderAPIKeyAuthenticator(APIAuthenticatorBase):
         self.value = value
         
     def apply(self, request):
+        self.logger.debug("Applying API key and Content-Type headers.")
         request.headers[self.key] = self.value
         request.headers["Content-Type"] = "application/json"
         return request

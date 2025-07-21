@@ -12,7 +12,7 @@ class TapRestApiPost(Tap):
         th.Property(
             "start_date",
             th.StringType,
-            description="Default replication start date in YYYY-MM-DD format",
+            description="Default replication start date in YYYY-MM-DD format.",
         ),
         th.Property(
             "streams",
@@ -53,14 +53,13 @@ class TapRestApiPost(Tap):
 
     def discover_streams(self):
         """Instantiate one DynamicStream per configured stream."""
-        return [
+        self.logger.info("Starting stream discovery...")
+        streams = [
             DynamicStream(tap=self, name=cfg["name"], config=cfg)
             for cfg in self.config.get("streams", [])
         ]
-
-def main():
-    TapRestApiPost.cli()
+        self.logger.info(f"Discovered {len(streams)} streams.")
+        return streams
 
 if __name__ == "__main__":
-    sys.exit(main())
-    
+    TapRestApiPost.cli()
