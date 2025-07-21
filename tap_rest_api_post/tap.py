@@ -7,7 +7,7 @@ from singer_sdk import Tap
 from singer_sdk import typing as th
 from tap_rest_api_post.streams import DynamicStream
 
-# Root logger: very verbose to stderr
+# Root logger configuration: verbose to stderr
 logging.basicConfig(
     level=logging.DEBUG,
     format="%(asctime)s %(levelname)s %(name)s:%(lineno)d %(message)s",
@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 class TapRestApiPost(Tap):
     """A generic Meltano tap for POST-based REST APIs, with exhaustive logging."""
+
     name = "tap-rest-api-post"
 
     config_jsonschema = th.PropertiesList(
@@ -55,9 +56,10 @@ class TapRestApiPost(Tap):
             raise
         logger.info("[Tap] tap-rest-api-post finished successfully.")
 
+
 def main():
     TapRestApiPost.cli()
 
+
 if __name__ == '__main__':
     main()
-    
