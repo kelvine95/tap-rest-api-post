@@ -1,7 +1,7 @@
 # pagination.py
 import logging
-from singer_sdk.helpers.jsonpath import extract_jsonpath
 from singer_sdk.pagination import BasePageNumberPaginator
+from singer_sdk.helpers.jsonpath import extract_jsonpath
 
 logger = logging.getLogger(__name__)
 
@@ -42,11 +42,9 @@ class TotalPagesPaginator(BasePageNumberPaginator):
 
     def has_more(self, response) -> bool:
         """Check if there are more pages available."""
-        # Check if we can get a next token without advancing the paginator
         temp_current = self.current_value
         next_token = self.get_next(response)
-        self.current_value = temp_current  # Restore current value
-        
+        self.current_value = temp_current
         more = next_token is not None
         logger.info(f"[Paginator] has_more? current_page={self.current_value} -> {more}")
         return more
