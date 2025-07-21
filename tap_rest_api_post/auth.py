@@ -1,4 +1,3 @@
-# tap_rest_api_post/auth.py
 import logging
 from singer_sdk.authenticators import APIAuthenticatorBase
 
@@ -22,3 +21,4 @@ class HeaderAPIKeyAuthenticator(APIAuthenticatorBase):
         }
         logger.debug(f"Setting auth header: {headers}")
         return headers
+    

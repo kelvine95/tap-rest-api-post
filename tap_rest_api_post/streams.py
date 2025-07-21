@@ -1,3 +1,4 @@
+# tap_rest_api_post/streams.py
 import copy
 import logging
 from datetime import datetime, timezone, date
@@ -93,9 +94,18 @@ class DynamicStream(PostRESTStream):
         if isinstance(start_val, (datetime, date)):
             start_str = start_val.strftime("%Y-%m-%d")
         else:
-            start_str = str(start_val)
+            start_str = str(start_val or "")
         current_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         subs = {"start_date": start_str, "current_date": current_str}
+        logger.info(f"Subs for '{self.name}': {subs}")
+        # Warn if substitutions are empty
+        if not subs["start_date"]:
+            logger.warning(f"Empty start_date substitution for '{self.name}', defaulting to config.start_date: {self.tap.config.get('start_date')}")
+            subs["start_date"] = str(self.tap.config.get("start_date"))
+        if not subs["current_date"]:
+            logger.warning(f"Empty current_date substitution for '{self.name}', using UTC today")
+            subs["current_date"] = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
         logger.debug(f"Raw payload for '{self.name}': {raw}")
         payload = self._apply_subs(raw, subs)
         logger.info(f"Prepared payload for '{self.name}': {payload}")
