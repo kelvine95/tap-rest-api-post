@@ -1,5 +1,3 @@
-# tap_rest_api_post/tap.py
-
 import logging
 import sys
 
@@ -49,20 +47,28 @@ class TapRestApiPost(Tap):
     ).to_dict()
 
     def discover_streams(self) -> list[DynamicStream]:
-        logger.debug(f"[Tap] discover_streams() called — configured stream count: {len(self.config.get('streams', []))}")
-        streams = [
-            DynamicStream(tap=self, name=cfg["name"], config=cfg)
-            for cfg in self.config.get("streams", [])
-        ]
-        logger.debug(f"[Tap] discover_streams() completed — instantiated streams: {[s.name for s in streams]}")
+        """Instantiate dynamic streams based on configuration with verbose logging."""
+        streams_cfg = self.config.get('streams', [])
+        logger.debug(f"[Tap] discover_streams(): found {len(streams_cfg)} stream configs")
+        streams = []
+        for cfg in streams_cfg:
+            name = cfg.get('name')
+            logger.debug(f"[Tap] creating DynamicStream for '{name}' with config keys: {list(cfg.keys())}")
+            stream = DynamicStream(tap=self, name=name, config=cfg)
+            streams.append(stream)
+            logger.info(f"[Tap] added stream: {name}")
+        logger.debug(f"[Tap] discover_streams(): returning {len(streams)} streams: {[s.name for s in streams]}")
         return streams
 
     def main(self):
-        logger.debug("[Tap] main() start")
-        super().main()
-        logger.debug("[Tap] main() finished")
+        logger.info("[Tap] Starting tap-rest-api-post...")
+        try:
+            super().main()
+        except Exception:
+            logger.exception("[Tap] Unhandled exception in main loop")
+            raise
+        logger.info("[Tap] tap-rest-api-post finished successfully.")
 
 
-# Entry point for Meltano
 def main():
     TapRestApiPost.cli()
