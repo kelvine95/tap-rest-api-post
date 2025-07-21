@@ -1,161 +1,109 @@
 """All-in-one Stream class for tap-rest-api-post."""
-
 import copy
+import json
 import requests
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, Optional
 
 from singer_sdk.streams import RESTStream
-from singer_sdk.authenticators import APIKeyAuthenticator
 from singer_sdk.helpers.jsonpath import extract_jsonpath
-from singer_sdk.pagination import BasePageNumberPaginator
 
-# --- AUTHENTICATOR (Self-Contained) ---
-class HeaderAPIKeyAuthenticator(APIKeyAuthenticator):
-    """Authenticator that sets the API key and Content-Type in the header."""
-    def __init__(self, stream, key: str, value: str):
-        super().__init__(stream=stream, key=key, value=value, location="header")
-        self.logger.info(f"HeaderAPIKeyAuthenticator initialized for stream '{self.stream.name}'.")
 
-    @property
-    def auth_headers(self) -> dict:
-        headers = super().auth_headers
-        headers["Content-Type"] = "application/json"
-        self.logger.debug(f"Auth headers prepared: {headers}")
-        return headers
-
-# --- PAGINATOR (Self-Contained) ---
-class TotalPagesPaginator(BasePageNumberPaginator):
-    """Paginator that stops when the current page exceeds 'totalPages' from the response."""
-    def __init__(self, start_value: int, total_pages_path: str):
-        super().__init__(start_value)
-        self.total_pages_path = total_pages_path
-        self._total_pages = None
-        self.logger.info(f"TotalPagesPaginator initialized with start value {start_value}.")
-
-    def has_more(self, response) -> bool:
-        """Check if there are more pages to fetch."""
-        if self._total_pages is None:
-            self.logger.info(f"Attempting to find 'totalPages' with JSONPath: '{self.total_pages_path}'")
-            try:
-                results = list(extract_jsonpath(self.total_pages_path, response.json()))
-                if not results:
-                    self.logger.warning("Could not find 'totalPages'. Assuming only one page.")
-                    self._total_pages = 1
-                else:
-                    self._total_pages = int(results[0])
-                    self.logger.info(f"Found and set total pages: {self._total_pages}")
-            except Exception as e:
-                self.logger.error(f"Error parsing 'totalPages' from response: {e}. Stopping pagination.")
-                self._total_pages = 1
-        
-        has_more_pages = self.current_value < self._total_pages
-        self.logger.info(f"Pagination check: Next Page={self.current_value + 1}, Total Pages={self._total_pages}. Has More? -> {has_more_pages}")
-        return has_more_pages
-
-# --- DYNAMIC STREAM (Self-Contained) ---
 class DynamicStream(RESTStream):
-    """Dynamic stream class for making POST requests."""
+    """
+    A dynamic stream that reads its configuration from the tap settings.
+    This class manually controls the entire request and pagination loop.
+    """
     
     def __init__(self, tap, name: str, config: dict):
+        """Initialize the dynamic stream."""
         self.stream_config = config
         super().__init__(tap=tap, name=name, schema=self.stream_config["schema"])
         self.logger.info(f"Stream '{self.name}' initialized.")
 
     @property
-    def url_base(self) -> str:
-        return self.stream_config["api_url"]
-
-    @property
-    def path(self) -> str:
-        return self.stream_config["path"]
-
-    @property
     def http_method(self) -> str:
-        # This is the most critical fix, hardcoded in the final class.
+        # Set here for clarity, but the manual request_records method is what truly matters.
         return "POST"
-
-    @property
-    def authenticator(self) -> HeaderAPIKeyAuthenticator:
-        # Uses the self-contained authenticator class defined above.
-        return HeaderAPIKeyAuthenticator(
-            stream=self,
-            key=self.stream_config.get("api_key_header"),
-            value=self.stream_config.get("api_key")
-        )
-
-    @property
-    def records_jsonpath(self) -> str:
-        return self.stream_config["records_path"]
-
-    @property
-    def replication_key(self) -> Optional[str]:
-        return self.stream_config.get("replication_key")
-
-    def get_new_paginator(self):
-        pagination_config = self.stream_config.get("pagination")
-        if not pagination_config or pagination_config.get("strategy") != "total_pages":
-            return None
-        return TotalPagesPaginator(
-            start_value=pagination_config.get("start_value", 1),
-            total_pages_path=pagination_config.get("total_pages_path")
-        )
-
-    def get_url_params(self, context: Optional[dict], next_page_token) -> Dict[str, Any]:
-        params: dict = {}
-        pagination_config = self.stream_config.get("pagination", {})
         
-        params[pagination_config["page_param"]] = next_page_token
-        params[pagination_config["page_size_param"]] = pagination_config["page_size"]
-        
-        self.logger.info(f"Preparing URL params: {params}")
-        return params
+    def request_records(self, context: Optional[dict]) -> Iterable[dict]:
+        """
+        Manually builds and sends POST requests, handling pagination.
+        This logic is a direct copy of the working Jupyter Notebook script.
+        """
+        self.logger.info(f"Starting manual request records loop for stream '{self.name}'.")
 
-    def prepare_request_payload(self, context: Optional[dict], next_page_token) -> Optional[dict]:
-        """Prepare the data payload for the POST request."""
-        self.logger.info("Preparing request payload (body)...")
-        payload = copy.deepcopy(self.stream_config.get("body", {}))
-        
+        # --- 1. Get State and Determine Dates ---
         start_date = self.get_starting_replication_key_value(context)
-
         if start_date:
             self.logger.info(f"Found state bookmark for '{self.replication_key}': '{start_date}'. Using as start_date.")
         else:
             start_date = self.config.get("start_date")
             self.logger.info(f"No state found. Using config start_date: '{start_date}'.")
 
-        subs = {
-            "start_date": start_date,
-            "current_date": datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        # --- 2. Prepare Static Request Components ---
+        url = f"{self.stream_config['api_url']}{self.stream_config['path']}"
+        headers = {
+            "Content-Type": "application/json",
+            self.stream_config['api_key_header']: self.stream_config['api_key']
         }
         
-        self.logger.debug(f"Substituting placeholders with: {subs}")
-        final_payload = self._apply_subs(payload, subs)
-        self.logger.info(f"Final request body: {final_payload}")
-        return final_payload
+        base_payload = copy.deepcopy(self.stream_config.get("body", {}))
+        base_payload['start_date'] = start_date
+        base_payload['end_date'] = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
-    def _apply_subs(self, obj, subs):
-        """Recursively substitutes placeholder values in the payload."""
-        if isinstance(obj, dict):
-            return {k: self._apply_subs(v, subs) for k, v in obj.items()}
-        if isinstance(obj, list):
-            return [self._apply_subs(elem, subs) for elem in obj]
-        if isinstance(obj, str):
-            for key, value in subs.items():
-                if value:
-                    obj = obj.replace(f"${{{key}}}", str(value))
-            return obj
-        return obj
-
-    def parse_response(self, response: requests.Response) -> Iterable[dict]:
-        """Parse the response and extract the records."""
-        self.logger.info(f"Parsing response from {response.request.method} {response.url}")
-        records = extract_jsonpath(self.records_jsonpath, input=response.json())
+        # --- 3. Pagination Loop ---
+        current_page = self.stream_config.get("pagination", {}).get("start_value", 1)
+        total_pages = 1 # Initialize to 1 to run the loop at least once
         
-        transform = self.stream_config.get("record_transform", {})
-        if transform:
-            self.logger.info("Applying record transformation.")
-            yield from ({**r, **transform} for r in records)
-        else:
-            yield from records
+        while current_page <= total_pages:
+            params = {
+                self.stream_config["pagination"]["page_param"]: current_page,
+                self.stream_config["pagination"]["page_size_param"]: self.stream_config["pagination"]["page_size"]
+            }
+
+            self.logger.info(f"--- Preparing Manual Request: Page {current_page}/{total_pages or '?'} ---")
+            self.logger.info(f"URL: {url}")
+            self.logger.info(f"METHOD: {self.http_method}")
+            self.logger.info(f"HEADERS: {headers}")
+            self.logger.info(f"PARAMS: {params}")
+            self.logger.info(f"BODY: {base_payload}")
+            
+            try:
+                response = requests.post(
+                    url,
+                    headers=headers,
+                    params=params,
+                    json=base_payload
+                )
+                response.raise_for_status()
+                response_data = response.json()
+            except Exception as e:
+                self.logger.critical(f"Fatal error during request: {e}")
+                self.logger.critical(f"Response Text: {response.text if 'response' in locals() else 'No response'}")
+                raise
+
+            # Update total_pages from the first successful response
+            if total_pages == 1:
+                total_pages_path = self.stream_config.get("pagination", {}).get("total_pages_path")
+                pages_found = list(extract_jsonpath(total_pages_path, response_data))
+                if pages_found:
+                    total_pages = int(pages_found[0])
+                    self.logger.info(f"Total pages discovered: {total_pages}")
+                else:
+                    self.logger.warning(f"Could not find total pages at path '{total_pages_path}'. Assuming 1 page.")
+
+            # Yield records
+            records_path = self.stream_config["records_path"]
+            records = list(extract_jsonpath(records_path, response_data))
+            self.logger.info(f"Found {len(records)} records on page {current_page}.")
+            
+            transform = self.stream_config.get("record_transform", {})
+            for record in records:
+                if transform:
+                    yield {**record, **transform}
+                else:
+                    yield record
+
+            current_page += 1
             

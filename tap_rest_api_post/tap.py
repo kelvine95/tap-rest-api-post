@@ -1,8 +1,8 @@
 """Tap for REST API POST."""
-
 from singer_sdk import Tap
 from singer_sdk import typing as th
 
+# This now points to the single, all-in-one streams file
 from tap_rest_api_post.streams import DynamicStream
 
 class TapRestApiPost(Tap):
