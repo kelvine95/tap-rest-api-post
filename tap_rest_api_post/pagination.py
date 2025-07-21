@@ -1,4 +1,5 @@
-# tap_rest_api_post/pagination.py
+# pagination.py
+
 import logging
 from singer_sdk.helpers.jsonpath import extract_jsonpath
 from singer_sdk.pagination import BasePageNumberPaginator
@@ -14,29 +15,30 @@ class TotalPagesPaginator(BasePageNumberPaginator):
         super().__init__(start_value=start_value)
         self.total_pages_path = total_pages_path
         self._total_pages = None
-        logger.info(f"TotalPagesPaginator initialized: start_value={start_value}, total_pages_path='{total_pages_path}'")
+        logger.info(f"TotalPagesPaginator(init) start_value={start_value}, total_pages_path='{total_pages_path}'")
 
     def get_next_page_token(self, response):
-        logger.debug(f"get_next_page_token: current_value={self.current_value}")
+        logger.debug(f"[Paginator] current_value={self.current_value}")
         if self._total_pages is None:
-            logger.info("Discovering total pages from response JSON")
+            logger.info("[Paginator] discovering total pages from response JSON")
             try:
-                results = list(extract_jsonpath(self.total_pages_path, response.json()))
-                self._total_pages = int(results[0]) if results else self.start_value
-                logger.info(f"Total pages discovered: {self._total_pages}")
+                all_vals = list(extract_jsonpath(self.total_pages_path, response.json()))
+                self._total_pages = int(all_vals[0]) if all_vals else self.start_value
+                logger.info(f"[Paginator] discovered total_pages={self._total_pages}")
             except Exception as e:
-                logger.error(f"Error parsing total pages: {e}. Defaulting to start_value={self.start_value}")
+                logger.error(f"[Paginator] error parsing total pages: {e}. defaulting to {self.start_value}")
                 self._total_pages = self.start_value
+
         next_page = self.current_value + 1
         if next_page <= self._total_pages:
             self.current_value = next_page
-            logger.debug(f"Next page token: {next_page}")
+            logger.debug(f"[Paginator] next_page_token -> {next_page}")
             return next_page
-        logger.debug("No more pages to fetch")
+
+        logger.debug("[Paginator] no more pages to fetch")
         return None
 
     def has_more(self, response) -> bool:
         more = self.get_next_page_token(response) is not None
-        logger.info(f"has_more check: current_page={self.current_value}, has_more={more}")
+        logger.info(f"[Paginator] has_more? current_page={self.current_value} -> {more}")
         return more
-    

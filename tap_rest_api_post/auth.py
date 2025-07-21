@@ -1,3 +1,5 @@
+# auth.py
+
 import logging
 from singer_sdk.authenticators import APIAuthenticatorBase
 
@@ -9,7 +11,7 @@ class HeaderAPIKeyAuthenticator(APIAuthenticatorBase):
         super().__init__(stream=stream)
         self._key = key
         self._value = value
-        logger.info(f"HeaderAPIKeyAuthenticator initialized with key='{self._key}' and masked value")
+        logger.info(f"HeaderAPIKeyAuthenticator initialized for stream='{stream.name}' with header='{self._key}' (value masked)")
 
     def get_auth_header(self) -> dict:
         """
@@ -19,6 +21,5 @@ class HeaderAPIKeyAuthenticator(APIAuthenticatorBase):
             self._key: self._value,
             "Content-Type": "application/json",
         }
-        logger.debug(f"Setting auth header: {headers}")
+        logger.debug(f"[{self.stream.name}] get_auth_header -> {headers}")
         return headers
-    
