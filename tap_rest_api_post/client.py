@@ -2,7 +2,7 @@ import copy
 import json
 from datetime import datetime, timezone
 from singer_sdk.streams import RESTStream
-from .pagination import TotalPagesPaginator  # Add this import
+from .pagination import TotalPagesPaginator
 
 class PostRESTStream(RESTStream):
     @property
@@ -32,7 +32,11 @@ class PostRESTStream(RESTStream):
 
     def prepare_request_payload(self, context, next_page_token) -> dict:
         payload = copy.deepcopy(self.stream_config.get("body", {}))
-        state = self.get_context_state()
+        
+        # --- FIX IS HERE ---
+        # Pass the 'context' argument to the get_context_state method.
+        state = self.get_context_state(context) 
+        
         bookmarks = state.get('bookmarks', {}) if state else {}
         stream_bookmark = bookmarks.get(self.name, {})
         last_record = stream_bookmark.get(self.replication_key, self.config.get("start_date"))
