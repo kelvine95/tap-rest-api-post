@@ -1,4 +1,5 @@
 import copy
+import requests  # <-- Make sure this is imported
 from datetime import datetime, timezone
 from singer_sdk.streams import RESTStream
 from .pagination import TotalPagesPaginator
@@ -35,14 +36,38 @@ class PostRESTStream(RESTStream):
             params[pagination["page_size_param"]] = page_size
 
         return params
+    
+    # --- ADDING THIS METHOD FOR DEBUGGING ---
+    def prepare_request(
+        self, context: dict | None, next_page_token
+    ) -> requests.PreparedRequest:
+        """Prepare a request object and log its details for debugging."""
+        # This calls the original SDK method to build the request
+        request: requests.PreparedRequest = super().prepare_request(
+            context, next_page_token
+        )
+
+        # --- DEBUGGING LOGS ---
+        # These lines will print the request details to your terminal
+        self.logger.info("--- HTTP REQUEST DETAILS (FROM TAP) ---")
+        self.logger.info(f"URL: {request.url}")
+        self.logger.info(f"METHOD: {request.method}")
+        self.logger.info(f"HEADERS: {request.headers}")
+        if request.body:
+            # The body is in bytes, so we decode it for readability
+            self.logger.info(f"BODY: {request.body.decode('utf-8')}")
+        else:
+            self.logger.info("BODY: None")
+        self.logger.info("---------------------------------------")
+        # --- END DEBUGGING LOGS ---
+
+        return request
 
     def prepare_request_payload(self, context, next_page_token) -> dict:
         """
         Prepares the JSON body for the POST request.
         """
         payload = copy.deepcopy(self.stream_config.get("body", {}))
-        
-        # Correctly pass the context to get the stream's state
         state = self.get_context_state(context)
         
         bookmarks = state.get('bookmarks', {}) if state else {}
@@ -66,4 +91,3 @@ class PostRESTStream(RESTStream):
                 obj = obj.replace(f"${{{key}}}", str(value))
             return obj
         return obj
-    
