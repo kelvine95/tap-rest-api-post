@@ -36,9 +36,7 @@ class TapRestApiPost(Tap):
 
     def discover_streams(self) -> list[DynamicStream]:
         logger.info(f"Discovering streams: {len(self.config['streams'])}")
-        streams = []
-        for cfg in self.config['streams']:
-            streams.append(DynamicStream(tap=self, config=cfg))
+        streams = [DynamicStream(tap=self, config=cfg) for cfg in self.config['streams']]
         logger.info(f"Streams discovered: {[s.name for s in streams]}")
         return streams
 
@@ -46,4 +44,8 @@ class TapRestApiPost(Tap):
         logger.info("Starting tap-rest-api-post...")
         super().main()
         logger.info("tap-rest-api-post finished.")
-        
+
+# Entry point for Meltano
+
+def main():
+    TapRestApiPost.cli()

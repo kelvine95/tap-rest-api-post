@@ -39,4 +39,4 @@ class TotalPagesPaginator(BasePageNumberPaginator):
         more = self.get_next_page_token(response) is not None
         logger.info(f"has_more check: current_page={self.current_value}, has_more={more}")
         return more
-        
+    

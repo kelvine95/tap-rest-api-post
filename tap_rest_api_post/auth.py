@@ -10,7 +10,7 @@ class HeaderAPIKeyAuthenticator(APIAuthenticatorBase):
         super().__init__(stream=stream)
         self._key = key
         self._value = value
-        logger.info(f"HeaderAPIKeyAuthenticator initialized with key='{self._key}' and value='{self._value[:4]}***'")
+        logger.info(f"HeaderAPIKeyAuthenticator initialized with key='{self._key}' and masked value")
 
     def get_auth_header(self) -> dict:
         """
@@ -22,4 +22,3 @@ class HeaderAPIKeyAuthenticator(APIAuthenticatorBase):
         }
         logger.debug(f"Setting auth header: {headers}")
         return headers
-    
