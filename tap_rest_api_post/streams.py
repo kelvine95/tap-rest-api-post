@@ -1,6 +1,7 @@
+# tap_rest_api_post/streams.py
 import copy
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 import requests
 from typing import Iterable, Optional, Any, Dict
 from singer_sdk.streams import RESTStream
@@ -14,16 +15,16 @@ class PostRESTStream(RESTStream):
     """Base class forcing POST for all requests, with logging."""
     @property
     def http_method(self) -> str:
-        logger.debug(f"Using HTTP method: POST for stream {self.name}")
+        logger.debug(f"HTTP method for stream '{self.name}': POST")
         return "POST"
 
 class DynamicStream(PostRESTStream):
-    """Dynamic REST stream for POST-based APIs with incremental support and verbose logging."""
+    """Dynamic REST stream for POST-based APIs with incremental support, exact URL assembly, and verbose logging."""
     def __init__(self, tap, config: dict):
         name = config.get("name")
         super().__init__(tap=tap, name=name, schema=config.get("schema"))
         self.stream_config = config
-        logger.info(f"DynamicStream initialized for '{name}' with config keys: {list(config.keys())}")
+        logger.info(f"Initialized DynamicStream for '{name}'")
 
     @property
     def url_base(self) -> str:
@@ -33,9 +34,15 @@ class DynamicStream(PostRESTStream):
 
     @property
     def path(self) -> str:
-        p = self.stream_config.get("path", "").lstrip("/")
+        raw = self.stream_config.get("path", "")
+        p = raw if raw.startswith("/") else f"/{raw}"
         logger.debug(f"path for '{self.name}': {p}")
         return p
+
+    def _full_url(self) -> str:
+        url = f"{self.url_base}{self.path}"
+        logger.debug(f"Full request URL for '{self.name}': {url}")
+        return url
 
     @property
     def authenticator(self) -> HeaderAPIKeyAuthenticator:
@@ -44,7 +51,6 @@ class DynamicStream(PostRESTStream):
             key=self.stream_config.get("api_key_header", "x-api-key"),
             value=self.stream_config.get("api_key"),
         )
-        logger.debug(f"Authenticator configured for '{self.name}'")
         return auth
 
     @property
@@ -66,9 +72,7 @@ class DynamicStream(PostRESTStream):
                 start_value=p_conf.get("start_value", 1),
                 total_pages_path=p_conf.get("total_pages_path", "data.pagination.totalPages"),
             )
-            logger.info(f"Paginator created for '{self.name}': {p_conf}")
             return paginator
-        logger.debug(f"No paginator for '{self.name}': strategy={p_conf.get('strategy')}")
         return None
 
     def get_url_params(self, context: Optional[dict], next_page_token) -> Dict[str, Any]:
@@ -82,40 +86,45 @@ class DynamicStream(PostRESTStream):
         return params
 
     def prepare_request_payload(self, context: Optional[dict], next_page_token) -> Optional[dict]:
-        payload = copy.deepcopy(self.stream_config.get("body", {}))
-        last_value = self.get_starting_replication_key_value(context)
-        start_val = last_value or self.tap.config.get("start_date")
-        subs = {
-            "start_date": start_val,
-            "current_date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
-        }
-        logger.debug(f"Raw payload before subs for '{self.name}': {payload}")
-        final_payload = self._apply_subs(payload, subs)
-        logger.info(f"Prepared payload for '{self.name}': {final_payload}")
-        return final_payload
+        raw = copy.deepcopy(self.stream_config.get("body", {}))
+        last_val = self.get_starting_replication_key_value(context)
+        start_val = last_val or self.tap.config.get("start_date")
+        # Format start_date
+        if isinstance(start_val, (datetime, date)):
+            start_str = start_val.strftime("%Y-%m-%d")
+        else:
+            start_str = str(start_val)
+        current_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        subs = {"start_date": start_str, "current_date": current_str}
+        logger.debug(f"Raw payload for '{self.name}': {raw}")
+        payload = self._apply_subs(raw, subs)
+        logger.info(f"Prepared payload for '{self.name}': {payload}")
+        return payload
 
     def _apply_subs(self, obj: Any, subs: dict) -> Any:
         if isinstance(obj, dict):
             return {k: self._apply_subs(v, subs) for k, v in obj.items()}
         if isinstance(obj, list):
-            return [self._apply_subs(elem, subs) for elem in obj]
+            return [self._apply_subs(v, subs) for v in obj]
         if isinstance(obj, str):
-            for key, value in subs.items():
-                if value is not None:
-                    obj = obj.replace(f"${{{key}}}", str(value))
-            return obj
+            result = obj
+            for k, v in subs.items():
+                result = result.replace(f"${{{k}}}", v)
+            return result
         return obj
 
+    def request_records(self, context: Optional[dict]) -> Iterable[dict]:
+        url = self._full_url()
+        return super().request_records(context)
+
     def parse_response(self, response: requests.Response) -> Iterable[dict]:
-        status = response.status_code
-        logger.info(f"Response status for '{self.name}': {status}")
+        logger.info(f"Response status for '{self.name}': {response.status_code}")
         data = response.json()
         records = list(extract_jsonpath(self.records_jsonpath, data))
-        logger.info(f"Extracted {len(records)} records for '{self.name}' using path '{self.records_jsonpath}'")
+        logger.info(f"Extracted {len(records)} records for '{self.name}'")
         transform = self.stream_config.get("record_transform", {})
         if transform:
-            logger.debug(f"Applying record_transform for '{self.name}': {transform}")
             yield from ({**r, **transform} for r in records)
         else:
             yield from records
-            
+    

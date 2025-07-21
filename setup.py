@@ -2,11 +2,11 @@ from setuptools import setup, find_packages
 
 setup(
     name="tap-rest-api-post",
-    version="0.1.0",
+    version="0.2.0",
     description="Generic REST API tap supporting POST requests with advanced pagination",
     packages=find_packages(include=["tap_rest_api_post", "tap_rest_api_post.*"]),
     install_requires=[
-        "singer-sdk>=0.6.0",
+        "singer-sdk>=0.24.0",
     ],
     entry_points={
         "console_scripts": [

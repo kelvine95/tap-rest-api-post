@@ -1,3 +1,4 @@
+# tap_rest_api_post/pagination.py
 import logging
 from singer_sdk.helpers.jsonpath import extract_jsonpath
 from singer_sdk.pagination import BasePageNumberPaginator
@@ -16,7 +17,7 @@ class TotalPagesPaginator(BasePageNumberPaginator):
         logger.info(f"TotalPagesPaginator initialized: start_value={start_value}, total_pages_path='{total_pages_path}'")
 
     def get_next_page_token(self, response):
-        logger.debug(f"get_next_page_token called: current_value={self.current_value}")
+        logger.debug(f"get_next_page_token: current_value={self.current_value}")
         if self._total_pages is None:
             logger.info("Discovering total pages from response JSON")
             try:
@@ -29,7 +30,7 @@ class TotalPagesPaginator(BasePageNumberPaginator):
         next_page = self.current_value + 1
         if next_page <= self._total_pages:
             self.current_value = next_page
-            logger.debug(f"Next page token available: {next_page}")
+            logger.debug(f"Next page token: {next_page}")
             return next_page
         logger.debug("No more pages to fetch")
         return None
@@ -38,4 +39,4 @@ class TotalPagesPaginator(BasePageNumberPaginator):
         more = self.get_next_page_token(response) is not None
         logger.info(f"has_more check: current_page={self.current_value}, has_more={more}")
         return more
-    
+        

@@ -1,3 +1,4 @@
+# tap_rest_api_post/tap.py
 import logging
 from singer_sdk import Tap
 from singer_sdk import typing as th
@@ -34,15 +35,15 @@ class TapRestApiPost(Tap):
     ).to_dict()
 
     def discover_streams(self) -> list[DynamicStream]:
-        logger.info(f"Discovering {len(self.config['streams'])} streams...")
-        streams = [
-            DynamicStream(tap=self, config=stream_config)
-            for stream_config in self.config["streams"]
-        ]
-        logger.info(f"Discovered streams: {[s.name for s in streams]}")
+        logger.info(f"Discovering streams: {len(self.config['streams'])}")
+        streams = []
+        for cfg in self.config['streams']:
+            streams.append(DynamicStream(tap=self, config=cfg))
+        logger.info(f"Streams discovered: {[s.name for s in streams]}")
         return streams
 
     def main(self):
-        logger.info("Starting tap execution...")
+        logger.info("Starting tap-rest-api-post...")
         super().main()
-        logger.info("Tap execution completed.")
+        logger.info("tap-rest-api-post finished.")
+        
