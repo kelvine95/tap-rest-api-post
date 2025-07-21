@@ -76,42 +76,88 @@ class DynamicStream(PostRESTStream):
         logger.debug(f"[{self.name}] no paginator (strategy != total_pages)")
         return None
 
-    def get_url_params(self, context: Optional[dict], next_page_token) -> Dict[str, Any]:
-        cfg = self.stream_config.get("pagination", {})
-        params = {
-            cfg.get("page_param", "page"): next_page_token,
-            cfg.get("page_size_param", "limit"): cfg.get("page_size"),
-        }
-        logger.debug(f"[{self.name}] url_params -> {params}")
+    def get_url_params(self, context: Optional[dict], next_page_token: Optional[Any]) -> Dict[str, Any]:
+        """
+        Get URL query parameters.
+        
+        For POST requests with pagination, we'll include pagination params in the URL.
+        """
+        params = {}
+        
+        # Only add pagination params if we have a paginator and a page token
+        if next_page_token is not None:
+            cfg = self.stream_config.get("pagination", {})
+            page_param = cfg.get("page_param", "page")
+            page_size_param = cfg.get("page_size_param", "limit")
+            page_size = cfg.get("page_size", 100)
+            
+            params[page_param] = next_page_token
+            params[page_size_param] = page_size
+            
+            logger.debug(f"[{self.name}] url_params with pagination -> {params}")
+        else:
+            # First request - set initial pagination params
+            cfg = self.stream_config.get("pagination", {})
+            if cfg:
+                page_param = cfg.get("page_param", "page")
+                page_size_param = cfg.get("page_size_param", "limit")
+                page_size = cfg.get("page_size", 100)
+                start_value = cfg.get("start_value", 1)
+                
+                params[page_param] = start_value
+                params[page_size_param] = page_size
+                
+                logger.debug(f"[{self.name}] initial url_params -> {params}")
+        
         return params
 
-    def prepare_request_payload(self, context: Optional[dict], next_page_token) -> Optional[dict]:
+    def prepare_request_payload(self, context: Optional[dict], next_page_token: Optional[Any]) -> Optional[dict]:
+        """
+        Prepare the request payload (body).
+        
+        Note: We don't include pagination params in the body - they go in URL params.
+        """
         raw = copy.deepcopy(self.stream_config.get("body", {}))
         logger.debug(f"[{self.name}] raw body template -> {raw!r}")
 
-        # determine start_date
-        last_val = self.get_starting_replication_key_value(context)
-        start_val = last_val or self.tap.config.get("start_date")
-        if isinstance(start_val, (datetime, date)):
-            start_str = start_val.strftime("%Y-%m-%d")
-        else:
-            start_str = str(start_val or "")
-        end_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        # Handle template variables in the body
+        if "start_date" in raw and raw["start_date"] == "${start_date}":
+            last_val = self.get_starting_replication_key_value(context)
+            start_val = last_val or self.tap.config.get("start_date")
+            if isinstance(start_val, (datetime, date)):
+                start_str = start_val.strftime("%Y-%m-%d")
+            else:
+                start_str = str(start_val or "")
+            raw["start_date"] = start_str
 
-        raw["start_date"] = start_str
-        raw["end_date"] = end_str
+        if "end_date" in raw and raw["end_date"] == "${current_date}":
+            end_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            raw["end_date"] = end_str
 
-        logger.info(f"[{self.name}] payload -> start_date={start_str}, end_date={end_str}")
-        logger.debug(f"[{self.name}] prepared payload -> {raw!r}")
+        logger.info(f"[{self.name}] payload -> {raw}")
         return raw
 
     def parse_response(self, response: requests.Response) -> Iterable[dict]:
         logger.info(f"[{self.name}] parsing response (status={response.status_code})")
+        
+        # Log response for debugging
+        try:
+            response_text = response.text
+            logger.debug(f"[{self.name}] response text: {response_text[:500]}...")  # First 500 chars
+        except Exception:
+            pass
+        
         try:
             data = response.json()
         except Exception as e:
             logger.error(f"[{self.name}] invalid JSON response: {e}")
+            logger.error(f"[{self.name}] response text: {response.text}")
             raise
+
+        # Check if the API returned success
+        if not data.get("success", True):
+            logger.error(f"[{self.name}] API returned success=false: {data}")
+            return
 
         records = list(extract_jsonpath(self.records_jsonpath, data))
         logger.info(f"[{self.name}] extracted {len(records)} raw records via JSONPath")
@@ -124,3 +170,17 @@ class DynamicStream(PostRESTStream):
                 yield merged
             else:
                 yield rec
+
+    def validate_response(self, response: requests.Response) -> None:
+        """Override to add more detailed error logging."""
+        if 400 <= response.status_code < 600:
+            msg = f"{response.status_code} {response.reason} for path: {self.path}"
+            
+            # Try to get more details from response body
+            try:
+                error_detail = response.json()
+                logger.error(f"[{self.name}] API error response: {error_detail}")
+            except Exception:
+                logger.error(f"[{self.name}] API error response text: {response.text}")
+            
+            raise Exception(msg)
