@@ -39,6 +39,31 @@ class TapRestApiPost(Tap):
                     th.Property("primary_keys", th.ArrayType(th.StringType), default=[]),
                     th.Property("replication_key", th.StringType),
                     th.Property(
+                        "date_handling",
+                        th.ObjectType(
+                            th.Property("type", th.StringType, allowed_values=["epoch", "date_string"]),
+                            th.Property("start_field", th.StringType),
+                            th.Property("end_field", th.StringType),
+                        ),
+                        description="Configuration for how dates are handled in the request body"
+                    ),
+                    th.Property(
+                        "transformations",
+                        th.ObjectType(
+                            th.Property("field_mappings", th.ObjectType(additional_properties=th.StringType)),
+                            th.Property(
+                                "value_transformations", 
+                                th.ObjectType(
+                                    additional_properties=th.ObjectType(
+                                        th.Property("type", th.StringType),
+                                        th.Property("divisor", th.NumberType),
+                                    )
+                                )
+                            ),
+                        ),
+                        description="Field mappings and value transformations"
+                    ),
+                    th.Property(
                         "pagination",
                         th.ObjectType(
                             th.Property("strategy", th.StringType, required=True),
@@ -62,9 +87,11 @@ class TapRestApiPost(Tap):
     def discover_streams(self) -> List[DynamicStream]:
         """Return a list of discovered streams."""
         return [
-            DynamicStream(tap=self, name=stream_config["name"], config=stream_config)
+            DynamicStream(tap=self, config=stream_config)
             for stream_config in self.config["streams"]
         ]
 
+
 # CLI Execution
-cli = TapRestApiPost.cli
+if __name__ == "__main__":
+    TapRestApiPost.cli()

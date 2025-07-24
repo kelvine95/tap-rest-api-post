@@ -1,8 +1,8 @@
 [tool.poetry]
 name = "tap-rest-api-post"
-version = "0.3.0"
-description = "A generic Meltano tap for REST APIs requiring POST requests, built with the Singer SDK."
-authors = ["Kelvin Emwinghare <kelvinemwinghare43@gmail.com>"]
+version = "0.3.1"
+description = "A generic Meltano tap for REST APIs that require POST requests, built with the Singer SDK."
+authors = ["Ighodaro Emwinghare <kelvinemwinghare43@gmail.com>"]
 license = "Apache-2.0"
 readme = "README.md"
 homepage = "https://github.com/kelvine95/tap-rest-api-post"
@@ -11,27 +11,27 @@ keywords = ["ELT", "Meltano", "Singer", "REST", "API", "tap"]
 
 [tool.poetry.dependencies]
 python = ">=3.8.1"
-# Pinning to a known stable and feature-rich range of the SDK
-singer-sdk = ">=0.33.0,<0.41.0"
+singer-sdk = ">=0.34.0,<0.41.0"
 requests = "^2.31.0"
 
-[tool.poetry.dev-dependencies]
+[tool.poetry.group.dev.dependencies]
 pytest = "^7.0"
-black = "^24.4.2" 
-flake8 = "^7.0.0" 
+black = "^24.4.2"
+ruff = "^0.4.4"
 mypy = "^1.8.0"
 
 [tool.black]
 line-length = 88
 target-version = ['py38']
 
-[tool.isort]
-profile = "black"
+[tool.ruff]
+line-length = 88
+select = ["E", "F", "I", "W", "PL", "UP"]
+ignore = ["E501"]
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
 
-# This section tells Meltano what command to run.
 [tool.poetry.scripts]
-tap-rest-api-post = 'tap_rest_api_post.tap:main'
+tap-rest-api-post = 'tap_rest_api_post.tap:TapRestApiPost.cli'
