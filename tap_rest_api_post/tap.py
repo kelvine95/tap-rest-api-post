@@ -60,8 +60,19 @@ class TapRestApiPost(Tap):
                                     )
                                 )
                             ),
+                            th.Property(
+                                "field_extractions",
+                                th.ObjectType(
+                                    additional_properties=th.ObjectType(
+                                        th.Property("source_field", th.StringType, required=True),
+                                        th.Property("type", th.StringType, required=True),
+                                        th.Property("filter_type", th.StringType),
+                                    )
+                                ),
+                                description="Extract values from nested structures"
+                            ),
                         ),
-                        description="Field mappings and value transformations"
+                        description="Field mappings, value transformations, and field extractions"
                     ),
                     th.Property(
                         "pagination",

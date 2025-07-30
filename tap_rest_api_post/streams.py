@@ -172,10 +172,8 @@ class DynamicStream(RESTStream):
         if not start_date:
             start_date = self.stream_config.get("start_date") or self._tap.config.get("start_date")
         
-        # Get end date
+        # Get end date - always use current date if not specified
         end_date = self.stream_config.get("end_date") or self._tap.config.get("current_date")
-        
-        # Default to today if no end date
         if not end_date:
             end_date = datetime.now().strftime("%Y-%m-%d")
             
@@ -231,6 +229,39 @@ class DynamicStream(RESTStream):
                     except (ValueError, TypeError, ZeroDivisionError) as e:
                         logger.warning(f"Error transforming field '{field}': {e}")
                         row[field] = None
+        
+        # Apply complex field extractions (for nested structures like Figment)
+        if "field_extractions" in transformations:
+            for new_field, extraction_config in transformations["field_extractions"].items():
+                source_field = extraction_config.get("source_field")
+                extraction_type = extraction_config.get("type")
+                
+                if source_field in row and extraction_type == "nested_array":
+                    # Extract from nested array structure
+                    array_data = row.get(source_field, [])
+                    if isinstance(array_data, list):
+                        for item in array_data:
+                            if isinstance(item, dict):
+                                item_type = item.get("type", "")
+                                if item_type == extraction_config.get("filter_type", ""):
+                                    # Extract the numeric value
+                                    if "numeric" in item and "exp" in item:
+                                        value = item["numeric"] / (10 ** item["exp"])
+                                        row[new_field] = value
+                                    elif "text" in item:
+                                        row[new_field] = float(item["text"])
+                                    break
+                elif source_field in row and extraction_type == "first_array_item":
+                    # Extract from first item in array
+                    array_data = row.get(source_field, [])
+                    if isinstance(array_data, list) and len(array_data) > 0:
+                        item = array_data[0]
+                        if isinstance(item, dict):
+                            if "numeric" in item and "exp" in item:
+                                value = item["numeric"] / (10 ** item["exp"])
+                                row[new_field] = value
+                            elif "text" in item:
+                                row[new_field] = float(item["text"])
 
         return row
 
