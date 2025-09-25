@@ -12,7 +12,6 @@ from singer_sdk.pagination import BaseAPIPaginator
 from singer_sdk.authenticators import SimpleAuthenticator
 from singer_sdk.helpers.jsonpath import extract_jsonpath
 
-
 from tap_rest_api_post.pagination import TotalPagesPaginator, SinglePagePaginator, StopIfEmptyPaginator
 
 logger = logging.getLogger(__name__)
@@ -24,39 +23,32 @@ class DynamicStream(RESTStream):
     rest_method = "POST"
     
     def __init__(self, tap, config: Dict[str, Any]):
-        """Initialize the dynamic stream."""
         self.stream_config = config
         self._cached_authenticator = None
         super().__init__(tap=tap)
 
     @property
     def name(self) -> str:
-        """Return the stream's name."""
         return self.stream_config["name"]
 
     @property
     def primary_keys(self) -> Optional[List[str]]:
-        """Return the list of primary key fields."""
         return self.stream_config.get("primary_keys", [])
 
     @property
     def replication_key(self) -> Optional[str]:
-        """Return the replication key field."""
         return self.stream_config.get("replication_key")
 
     @property
     def url_base(self) -> str:
-        """Return the API URL base."""
         return self.stream_config["api_url"]
 
     @property
     def path(self) -> str:
-        """Return the API endpoint path."""
         return f'/{self.stream_config["path"].lstrip("/")}'
 
     @property
     def authenticator(self) -> SimpleAuthenticator:
-        """Return a cached authenticator instance."""
         if self._cached_authenticator:
             return self._cached_authenticator
 
@@ -89,37 +81,29 @@ class DynamicStream(RESTStream):
         return self._cached_authenticator
 
     def get_new_paginator(self) -> BaseAPIPaginator:
-        """Get a paginator for this stream, if configured."""
         pagination_config = self.stream_config.get("pagination")
-        
         if not pagination_config:
-            logger.debug(f"No pagination config for stream '{self.name}', using SinglePagePaginator")
             return SinglePagePaginator()
 
         strategy = pagination_config.get("strategy")
         if strategy == "total_pages":
-            logger.debug(f"Using TotalPagesPaginator for stream '{self.name}'")
             return TotalPagesPaginator(
                 start_value=1,
                 total_pages_path=pagination_config["total_pages_path"],
             )
-
         elif strategy == "stop_if_empty":
-            logger.debug(f"Using StopIfEmptyPaginator for stream '{self.name}'")
             return StopIfEmptyPaginator(
                 start_value=1,
                 page_size=pagination_config["page_size"],
                 records_path=self.stream_config["records_path"],
             )
         else:
-            logger.warning(f"Unknown pagination strategy '{strategy}' for stream '{self.name}'. Using SinglePagePaginator.")
+            logger.warning(f"Unknown pagination strategy '{strategy}'. No pagination will be used.")
             return SinglePagePaginator()
 
     def get_url_params(self, context: Optional[dict], next_page_token: Optional[Any]) -> Dict[str, Any]:
-        """Get URL query parameters."""
         params: Dict[str, Any] = {}
         pagination_config = self.stream_config.get("pagination")
-
         pagination_in_body = pagination_config and pagination_config.get("pagination_in_body", False)
         
         if pagination_config and not pagination_in_body:
@@ -129,14 +113,12 @@ class DynamicStream(RESTStream):
             if "page_size_param" in pagination_config and "page_size" in pagination_config:
                 params[pagination_config["page_size_param"]] = pagination_config["page_size"]
                 
-        logger.debug(f"URL params for stream '{self.name}': {params}")
         return params
 
     def prepare_request_payload(self, context: Optional[dict], next_page_token: Optional[Any]) -> Optional[dict]:
-        """Prepare the JSON-encoded request body for the POST request."""
         body = self.stream_config.get("body", {}).copy()
-        
         pagination_config = self.stream_config.get("pagination")
+        
         if pagination_config and pagination_config.get("pagination_in_body", False):
             page_number = next_page_token or 1
             if "page_param" in pagination_config:
@@ -170,9 +152,7 @@ class DynamicStream(RESTStream):
         return body
 
     def _get_date_range(self, context: Optional[dict]) -> Tuple[Optional[str], Optional[str]]:
-        """Get the date range for the request based on configuration and state."""
         start_date = None
-        
         if self.replication_key and context:
             start_value = self.get_starting_replication_key_value(context)
             if start_value:
@@ -192,30 +172,39 @@ class DynamicStream(RESTStream):
         return start_date, end_date
 
     def _convert_date_to_epoch(self, date_str: str) -> int:
-        """Convert a date string to Solana epoch number."""
         date = datetime.strptime(date_str, "%Y-%m-%d")
         epoch_start = datetime(2020, 11, 7)
         days_since_start = (date - epoch_start).days
         epoch = int(days_since_start / 2.5)
         return epoch
-
+    
     def parse_response(self, response) -> Iterable[dict]:
         """Parse the response and yield each record."""
         try:
             json_response = response.json()
-            logger.debug(f"Response structure for stream '{self.name}': {list(json_response.keys())}")
             
-            records = list(extract_jsonpath(self.stream_config["records_path"], input=json_response))
-            logger.info(f"Extracted {len(records)} records from response for stream '{self.name}'")
-            
-            yield from records
+            # Flexibly handle both dictionary and list responses
+            if isinstance(json_response, dict):
+                logger.debug(f"Response is a dictionary. Keys: {list(json_response.keys())}")
+                records_path = self.stream_config["records_path"]
+                records = extract_jsonpath(records_path, input=json_response)
+            elif isinstance(json_response, list):
+                logger.debug("Response is a list. Using it directly as records.")
+                records = json_response
+            else:
+                logger.warning("Response is not a dict or list. No records will be extracted.")
+                records = []
+
+            extracted_records = list(records)
+            logger.info(f"Extracted {len(extracted_records)} records from response for stream '{self.name}'")
+            yield from extracted_records
+
         except Exception as e:
             logger.error(f"Error parsing response for stream '{self.name}': {e}")
             logger.debug(f"Response content: {response.text}")
             raise
 
     def post_process(self, row: dict, context: Optional[dict] = None) -> Optional[dict]:
-        """Apply transformations after parsing the response."""
         transformations = self.stream_config.get("transformations", {})
         
         if "field_mappings" in transformations:
@@ -271,5 +260,5 @@ class DynamicStream(RESTStream):
 
     @property
     def schema(self) -> dict:
-        """Return the JSON schema for this stream."""
         return self.stream_config["schema"]
+    
