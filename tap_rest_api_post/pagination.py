@@ -81,11 +81,21 @@ class StopIfEmptyPaginator(BasePageNumberPaginator):
         self.records_path = records_path
 
     def has_more(self, response) -> bool:
+        """Check if there are more pages to fetch by record count."""
         try:
-            records = list(extract_jsonpath(self.records_path, input=response.json()))
+            json_response = response.json()
+            records = []
+            
+            # Flexibly handle both dictionary and list responses
+            if isinstance(json_response, dict):
+                records = list(extract_jsonpath(self.records_path, input=json_response))
+            elif isinstance(json_response, list):
+                records = json_response
+
             num_records = len(records)
             logger.info(f"Page {self.current_value}: Found {num_records} records (page size: {self.page_size}).")
             return num_records == self.page_size
         except Exception as e:
             logger.error(f"Error checking for more pages: {e}")
             return False
+        
