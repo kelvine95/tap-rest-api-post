@@ -32,12 +32,28 @@ class TapRestApiPost(Tap):
                     th.Property("name", th.StringType, required=True),
                     th.Property("api_url", th.StringType, required=True),
                     th.Property("path", th.StringType, required=True),
-                    th.Property("api_key", th.StringType, required=True, secret=True),
-                    th.Property("api_key_header", th.StringType, default="x-api-key"),
                     th.Property("body", th.ObjectType(), default={}),
                     th.Property("records_path", th.StringType, required=True),
                     th.Property("primary_keys", th.ArrayType(th.StringType), default=[]),
                     th.Property("replication_key", th.StringType),
+
+                    # --- EXTENSION: New auth object for flexibility ---
+                    th.Property(
+                        "auth",
+                        th.ObjectType(
+                            th.Property("strategy", th.StringType, required=True, allowed_values=["header", "basic"]),
+                            th.Property("header_key", th.StringType),
+                            th.Property("header_value", th.StringType, secret=True),
+                            th.Property("username", th.StringType),
+                            th.Property("password", th.StringType, secret=True),
+                        ),
+                        description="Authentication strategy for the stream."
+                    ),
+
+                    # --- ORIGINAL PROPERTIES: Kept for backward compatibility ---
+                    th.Property("api_key", th.StringType, required=False, secret=True),
+                    th.Property("api_key_header", th.StringType, default="x-api-key"),
+
                     th.Property(
                         "date_handling",
                         th.ObjectType(
@@ -77,11 +93,14 @@ class TapRestApiPost(Tap):
                     th.Property(
                         "pagination",
                         th.ObjectType(
-                            th.Property("strategy", th.StringType, required=True),
+                            # --- EXTENSION: Added new allowed strategy ---
+                            th.Property("strategy", th.StringType, required=True, allowed_values=["total_pages", "stop_if_empty"]),
                             th.Property("page_param", th.StringType),
                             th.Property("page_size_param", th.StringType),
                             th.Property("page_size", th.IntegerType),
                             th.Property("total_pages_path", th.StringType),
+                            # --- EXTENSION: Added new flag ---
+                            th.Property("pagination_in_body", th.BooleanType, default=False),
                         ),
                     ),
                     th.Property(

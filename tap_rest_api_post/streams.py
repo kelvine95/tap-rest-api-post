@@ -3,6 +3,7 @@
 
 import logging
 import json
+import base64
 from datetime import datetime
 from typing import Any, Dict, Iterable, Optional, List, Tuple
 
@@ -12,18 +13,14 @@ from singer_sdk.authenticators import SimpleAuthenticator
 from singer_sdk.helpers.jsonpath import extract_jsonpath
 
 
-from tap_rest_api_post.pagination import TotalPagesPaginator, SinglePagePaginator
+from tap_rest_api_post.pagination import TotalPagesPaginator, SinglePagePaginator, StopIfEmptyPaginator
 
-# Get a logger for this module
 logger = logging.getLogger(__name__)
 
 
 class DynamicStream(RESTStream):
-    """
-    A dynamic REST stream driven entirely by its configuration.
-    """
+    """A dynamic REST stream driven entirely by its configuration."""
     
-    # Force POST method
     rest_method = "POST"
     
     def __init__(self, tap, config: Dict[str, Any]):
@@ -60,20 +57,35 @@ class DynamicStream(RESTStream):
     @property
     def authenticator(self) -> SimpleAuthenticator:
         """Return a cached authenticator instance."""
-        if not self._cached_authenticator:
+        if self._cached_authenticator:
+            return self._cached_authenticator
+
+        auth_headers = {}
+        if "auth" in self.stream_config:
+            auth_config = self.stream_config["auth"]
+            strategy = auth_config.get("strategy")
+            
+            if strategy == "basic":
+                username = auth_config.get("username", "")
+                password = auth_config.get("password", "")
+                user_pass = f"{username}:{password}".encode("utf-8")
+                b64_string = base64.b64encode(user_pass).decode("utf-8")
+                auth_headers["Authorization"] = f"Basic {b64_string}"
+                logger.info(f"Using Basic authentication for stream '{self.name}'.")
+            
+            elif strategy == "header":
+                header_key = auth_config.get("header_key", "x-api-key")
+                header_value = auth_config.get("header_value", "")
+                auth_headers[header_key] = header_value
+                logger.info(f"Using Header authentication for stream '{self.name}'.")
+        
+        elif "api_key" in self.stream_config:
             header_key = self.stream_config.get("api_key_header", "x-api-key")
             api_key = self.stream_config["api_key"]
-            
-            # Create a SimpleAuthenticator with the API key header
-            self._cached_authenticator = SimpleAuthenticator(
-                stream=self,
-                auth_headers={
-                    header_key: api_key
-                }
-            )
-            
-            logger.info(f"Created authenticator for stream '{self.name}' with header '{header_key}'")
-            
+            auth_headers[header_key] = api_key
+            logger.info(f"Using legacy Header authentication for stream '{self.name}'.")
+
+        self._cached_authenticator = SimpleAuthenticator(stream=self, auth_headers=auth_headers)
         return self._cached_authenticator
 
     def get_new_paginator(self) -> BaseAPIPaginator:
@@ -91,45 +103,48 @@ class DynamicStream(RESTStream):
                 start_value=1,
                 total_pages_path=pagination_config["total_pages_path"],
             )
+
+        elif strategy == "stop_if_empty":
+            logger.debug(f"Using StopIfEmptyPaginator for stream '{self.name}'")
+            return StopIfEmptyPaginator(
+                start_value=1,
+                page_size=pagination_config["page_size"],
+                records_path=self.stream_config["records_path"],
+            )
         else:
             logger.warning(f"Unknown pagination strategy '{strategy}' for stream '{self.name}'. Using SinglePagePaginator.")
             return SinglePagePaginator()
 
-    def get_url_params(
-        self, context: Optional[dict], next_page_token: Optional[Any]
-    ) -> Dict[str, Any]:
+    def get_url_params(self, context: Optional[dict], next_page_token: Optional[Any]) -> Dict[str, Any]:
         """Get URL query parameters."""
         params: Dict[str, Any] = {}
         pagination_config = self.stream_config.get("pagination")
 
-        if pagination_config and next_page_token:
-            # Add page parameter
-            if "page_param" in pagination_config:
-                params[pagination_config["page_param"]] = next_page_token
-            
-            # Add page size parameter
-            if "page_size" in pagination_config and "page_size_param" in pagination_config:
-                params[pagination_config["page_size_param"]] = pagination_config["page_size"]
+        pagination_in_body = pagination_config and pagination_config.get("pagination_in_body", False)
         
-        # For the first request, still add page size if configured
-        elif pagination_config and "page_size" in pagination_config and "page_size_param" in pagination_config:
-            params[pagination_config["page_size_param"]] = pagination_config["page_size"]
-            # Also add page=1 for first request if page_param is configured
+        if pagination_config and not pagination_in_body:
+            page_number = next_page_token or 1
             if "page_param" in pagination_config:
-                params[pagination_config["page_param"]] = 1
+                params[pagination_config["page_param"]] = page_number
+            if "page_size_param" in pagination_config and "page_size" in pagination_config:
+                params[pagination_config["page_size_param"]] = pagination_config["page_size"]
                 
         logger.debug(f"URL params for stream '{self.name}': {params}")
         return params
 
-    def prepare_request_payload(
-        self, context: Optional[dict], next_page_token: Optional[Any]
-    ) -> Optional[dict]:
+    def prepare_request_payload(self, context: Optional[dict], next_page_token: Optional[Any]) -> Optional[dict]:
         """Prepare the JSON-encoded request body for the POST request."""
         body = self.stream_config.get("body", {}).copy()
         
-        # Handle date injection
+        pagination_config = self.stream_config.get("pagination")
+        if pagination_config and pagination_config.get("pagination_in_body", False):
+            page_number = next_page_token or 1
+            if "page_param" in pagination_config:
+                body[pagination_config["page_param"]] = page_number
+            if "page_size_param" in pagination_config and "page_size" in pagination_config:
+                 body[pagination_config["page_size_param"]] = pagination_config["page_size"]
+
         date_handling = self.stream_config.get("date_handling", {})
-        
         if date_handling:
             start_date, end_date = self._get_date_range(context)
             
@@ -145,7 +160,6 @@ class DynamicStream(RESTStream):
                 if end_date and "end_field" in date_handling:
                     body[date_handling["end_field"]] = end_date
         
-        # Fallback for backward compatibility
         else:
             if "start_date" in body and self._tap.config.get("start_date"):
                 body["start_date"] = self._tap.config["start_date"]
@@ -159,7 +173,6 @@ class DynamicStream(RESTStream):
         """Get the date range for the request based on configuration and state."""
         start_date = None
         
-        # Check for replication key in state
         if self.replication_key and context:
             start_value = self.get_starting_replication_key_value(context)
             if start_value:
@@ -168,11 +181,9 @@ class DynamicStream(RESTStream):
                 else:
                     start_date = str(start_value)
         
-        # Fall back to config
         if not start_date:
             start_date = self.stream_config.get("start_date") or self._tap.config.get("start_date")
         
-        # Get end date - always use current date if not specified
         end_date = self.stream_config.get("end_date") or self._tap.config.get("current_date")
         if not end_date:
             end_date = datetime.now().strftime("%Y-%m-%d")
@@ -194,7 +205,6 @@ class DynamicStream(RESTStream):
             json_response = response.json()
             logger.debug(f"Response structure for stream '{self.name}': {list(json_response.keys())}")
             
-            # Extract records using JSONPath
             records = list(extract_jsonpath(self.stream_config["records_path"], input=json_response))
             logger.info(f"Extracted {len(records)} records from response for stream '{self.name}'")
             
@@ -208,13 +218,11 @@ class DynamicStream(RESTStream):
         """Apply transformations after parsing the response."""
         transformations = self.stream_config.get("transformations", {})
         
-        # Apply field mappings
         if "field_mappings" in transformations:
             for old_field, new_field in transformations["field_mappings"].items():
                 if old_field in row:
                     row[new_field] = row.pop(old_field)
         
-        # Apply value transformations
         if "value_transformations" in transformations:
             for field, transform_config in transformations["value_transformations"].items():
                 if field in row and transform_config.get("type") == "divide":
@@ -230,21 +238,18 @@ class DynamicStream(RESTStream):
                         logger.warning(f"Error transforming field '{field}': {e}")
                         row[field] = None
         
-        # Apply complex field extractions (for nested structures like Figment)
         if "field_extractions" in transformations:
             for new_field, extraction_config in transformations["field_extractions"].items():
                 source_field = extraction_config.get("source_field")
                 extraction_type = extraction_config.get("type")
                 
                 if source_field in row and extraction_type == "nested_array":
-                    # Extract from nested array structure
                     array_data = row.get(source_field, [])
                     if isinstance(array_data, list):
                         for item in array_data:
                             if isinstance(item, dict):
                                 item_type = item.get("type", "")
                                 if item_type == extraction_config.get("filter_type", ""):
-                                    # Extract the numeric value
                                     if "numeric" in item and "exp" in item:
                                         value = item["numeric"] / (10 ** item["exp"])
                                         row[new_field] = value
@@ -252,7 +257,6 @@ class DynamicStream(RESTStream):
                                         row[new_field] = float(item["text"])
                                     break
                 elif source_field in row and extraction_type == "first_array_item":
-                    # Extract from first item in array
                     array_data = row.get(source_field, [])
                     if isinstance(array_data, list) and len(array_data) > 0:
                         item = array_data[0]

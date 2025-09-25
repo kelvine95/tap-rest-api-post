@@ -72,3 +72,20 @@ class TotalPagesPaginator(BasePageNumberPaginator):
         if self.has_more(response):
             return self.current_value + 1
         return None
+
+class StopIfEmptyPaginator(BasePageNumberPaginator):
+    """Paginator that stops when the response has fewer records than the page size."""
+    def __init__(self, start_value: int, page_size: int, records_path: str):
+        super().__init__(start_value=start_value)
+        self.page_size = page_size
+        self.records_path = records_path
+
+    def has_more(self, response) -> bool:
+        try:
+            records = list(extract_jsonpath(self.records_path, input=response.json()))
+            num_records = len(records)
+            logger.info(f"Page {self.current_value}: Found {num_records} records (page size: {self.page_size}).")
+            return num_records == self.page_size
+        except Exception as e:
+            logger.error(f"Error checking for more pages: {e}")
+            return False
